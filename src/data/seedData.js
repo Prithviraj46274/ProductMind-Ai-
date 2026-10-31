@@ -1,4 +1,4 @@
-import { calculatePriorityScore } from './scoringFormulas'
+import { calculatePriorityScore } from './scoringFormulas.js'
 
 export const initialUser = {
   id: 'usr-1',
