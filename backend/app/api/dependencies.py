@@ -1,19 +1,24 @@
 """
 ProductMind AI — FastAPI Dependency Injection Layer
 Provides reusable, non-duplicating dependencies for MongoDB clients, databases,
-collection registries, and domain repositories.
+collection registries, domain repositories, and user authentication.
 """
 
-from typing import Type
+from typing import Type, Optional
 from fastapi import Request, Depends, HTTPException, status
+from fastapi.security import OAuth2PasswordBearer
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 
+from app.core.config import settings
+from app.core.security import decode_token, ExpiredTokenException, InvalidTokenException
 from app.database.collections import Collections
 from app.database.connection import MongoDBManager
+from app.models.auth import User
 from app.repositories import (
     UserRepository,
     WorkspaceMembershipRepository,
     WorkspaceRepository,
+    AuthSessionRepository,
     FeedbackRepository,
     FeedbackBatchRepository,
     FeatureRepository,
@@ -33,6 +38,11 @@ from app.repositories import (
     CustomerJourneyRepository,
     PrioritizationScenarioRepository,
     SavedReportRepository,
+)
+
+oauth2_scheme = OAuth2PasswordBearer(
+    tokenUrl=f"{settings.API_V1_STR}/auth/login",
+    auto_error=False,
 )
 
 
@@ -84,6 +94,12 @@ def get_user_repository(
     db: AsyncIOMotorDatabase = Depends(get_mongo_db),
 ) -> UserRepository:
     return UserRepository(db)
+
+
+def get_auth_session_repository(
+    db: AsyncIOMotorDatabase = Depends(get_mongo_db),
+) -> AuthSessionRepository:
+    return AuthSessionRepository(db)
 
 
 def get_workspace_membership_repository(
@@ -210,3 +226,83 @@ def get_saved_report_repository(
     db: AsyncIOMotorDatabase = Depends(get_mongo_db),
 ) -> SavedReportRepository:
     return SavedReportRepository(db)
+
+
+# -------------------------------------------------------------------------
+# Authentication & User Context Dependencies
+# -------------------------------------------------------------------------
+
+async def get_current_user(
+    request: Request,
+    token: Optional[str] = Depends(oauth2_scheme),
+    user_repo: UserRepository = Depends(get_user_repository),
+    session_repo: AuthSessionRepository = Depends(get_auth_session_repository),
+) -> User:
+    """
+    Extracts Bearer access token, verifies cryptographic signature,
+    checks active session in database, and retrieves the authenticated User.
+    Raises HTTP 401 Unauthorized for missing, invalid, expired, or revoked tokens.
+    """
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    try:
+        payload = decode_token(token)
+    except ExpiredTokenException:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Access token has expired",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    except InvalidTokenException:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authentication token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    # Enforce token type
+    if payload.get("type") != "access":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token type",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    user_id = payload.get("sub")
+    session_id = payload.get("session_id")
+    if not user_id or not session_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token missing required claims",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    # Verify session is actively valid in MongoDB (not revoked, not expired)
+    auth_session = await session_repo.find_by_id_active(session_id)
+    if not auth_session:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Session has been revoked or expired",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    # Retrieve User
+    user = await user_repo.find_by_id(user_id)
+    if not user or not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found or inactive",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    # Attach context to request state for downstream handlers
+    request.state.current_user = user
+    request.state.session_id = session_id
+    request.state.session_family = payload.get("session_family")
+
+    return user

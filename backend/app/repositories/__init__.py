@@ -11,6 +11,7 @@ from app.repositories.user_repository import (
     UserRepository,
     WorkspaceMembershipRepository,
 )
+from app.repositories.auth_session_repository import AuthSessionRepository
 from app.repositories.workspace_repository import WorkspaceRepository
 from app.repositories.feedback_repository import (
     FeedbackRepository,
@@ -46,6 +47,7 @@ __all__ = [
     "EntityNotFoundError",
     "UserRepository",
     "WorkspaceMembershipRepository",
+    "AuthSessionRepository",
     "WorkspaceRepository",
     "FeedbackRepository",
     "FeedbackBatchRepository",

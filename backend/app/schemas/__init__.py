@@ -3,6 +3,14 @@ ProductMind AI Schemas Registry
 """
 
 from app.schemas.user import UserCreate, UserUpdate, UserResponse
+from app.schemas.auth import (
+    RegisterRequest,
+    LoginRequest,
+    RefreshTokenRequest,
+    TokenResponse,
+    TokenRefreshResponse,
+    MessageResponse,
+)
 from app.schemas.workspace import WorkspaceCreate, WorkspaceUpdate, WorkspaceResponse, WorkspaceSettingsDTO
 from app.schemas.feedback import FeedbackItemCreate, FeedbackItemUpdate, FeedbackItemResponse
 from app.schemas.feature import FeatureCreate, FeatureUpdate, FeatureResponse
