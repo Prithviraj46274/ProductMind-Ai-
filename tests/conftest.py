@@ -34,3 +34,4 @@ def sync_db() -> Database:
     """PyMongo sync database instance."""
     db = MongoDBManager.connect_sync(settings.MONGODB_URI)
     yield db
+
