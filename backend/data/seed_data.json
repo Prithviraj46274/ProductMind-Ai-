@@ -1,0 +1,1320 @@
+{
+  "initialUser": {
+    "id": "usr-1",
+    "name": "Alex Rivera",
+    "email": "alex.rivera@productmind.ai",
+    "role": "Lead Product Architect",
+    "avatar": "AR",
+    "workspaceName": "Apex SaaS Product Operations",
+    "workspacePlan": "Enterprise Tier",
+    "theme": "dark",
+    "reducedMotion": false
+  },
+  "initialFeedback": [
+    {
+      "id": "fb-101",
+      "title": "Slow dashboard loading with large feedback datasets (>5k items)",
+      "description": "When switching to the Feedback Explorer with filter queries, the table stutters and takes upwards of 4 seconds to render. Our team reviews customer feedback daily and this lag hurts efficiency.",
+      "customer": "Sarah Jenkins",
+      "company": "FinTech Dynamics",
+      "email": "sjenkins@fintechdynamics.io",
+      "category": "Performance",
+      "sentiment": "Negative",
+      "priority": "Urgent",
+      "tags": [
+        "performance",
+        "latency",
+        "table-view",
+        "scalability"
+      ],
+      "date": "2026-10-18",
+      "linkedFeatureId": "feat-1"
+    },
+    {
+      "id": "fb-102",
+      "title": "Bi-directional Jira and Linear sync for engineering handoff",
+      "description": "We love drafting PRDs and prioritizing features here, but manually copying user stories and acceptance criteria over to Jira/Linear tickets is prone to omissions. We need automated webhooks or direct 2-way sync.",
+      "customer": "David Zhao",
+      "company": "HyperScale Corp",
+      "email": "dzhao@hyperscale.tech",
+      "category": "Integrations",
+      "sentiment": "Neutral",
+      "priority": "High",
+      "tags": [
+        "jira",
+        "linear",
+        "integrations",
+        "sync",
+        "workflow"
+      ],
+      "date": "2026-10-17",
+      "linkedFeatureId": "feat-2"
+    },
+    {
+      "id": "fb-103",
+      "title": "AI Smart Tagging accuracy is remarkably helpful for triage",
+      "description": "The keyword suggestion and auto-tagging engine saved our product operations team roughly 8 hours of manual categorization this sprint alone. Very impressed with the speed.",
+      "customer": "Elena Rostova",
+      "company": "OmniCommerce",
+      "email": "elena@omnicommerce.com",
+      "category": "Satisfaction",
+      "sentiment": "Positive",
+      "priority": "Medium",
+      "tags": [
+        "ai-tagging",
+        "triage",
+        "productivity",
+        "nlp"
+      ],
+      "date": "2026-10-16",
+      "linkedFeatureId": "feat-3"
+    },
+    {
+      "id": "fb-104",
+      "title": "Need CSV bulk export that includes weighted prioritization scores",
+      "description": "When preparing executive stakeholder presentations, I need to export the full feature prioritization matrix including individual factor breakdown columns (Impact, Urgency, Demand, Business Value).",
+      "customer": "Michael Vance",
+      "company": "NovaLogix",
+      "email": "mvance@novalogix.net",
+      "category": "Feature Requests",
+      "sentiment": "Neutral",
+      "priority": "High",
+      "tags": [
+        "export",
+        "csv",
+        "reporting",
+        "prioritization"
+      ],
+      "date": "2026-10-15",
+      "linkedFeatureId": "feat-4"
+    },
+    {
+      "id": "fb-105",
+      "title": "Occasional session timeout during PRD draft generation",
+      "description": "While writing a lengthy 13-section PRD, my browser tab was inactive for 45 minutes and I feared losing draft progress. Please ensure auto-save to local storage is always active.",
+      "customer": "Priya Sharma",
+      "company": "Cognitive Health",
+      "email": "priya.s@coghealth.org",
+      "category": "Reliability",
+      "sentiment": "Negative",
+      "priority": "High",
+      "tags": [
+        "auto-save",
+        "prd-editor",
+        "drafts",
+        "reliability"
+      ],
+      "date": "2026-10-14",
+      "linkedFeatureId": "feat-5"
+    },
+    {
+      "id": "fb-106",
+      "title": "Executive presentation mode slide transitions are sleek",
+      "description": "Used the Presentation Mode in our executive quarterly planning meeting. The C-suite loved the live KPIs and before-and-after What-If scenario comparisons without messy spreadsheets.",
+      "customer": "Marcus Chen",
+      "company": "Apex Cloud Solutions",
+      "email": "marcus@apexcloud.io",
+      "category": "Satisfaction",
+      "sentiment": "Positive",
+      "priority": "Low",
+      "tags": [
+        "presentation-mode",
+        "executive",
+        "slides",
+        "c-suite"
+      ],
+      "date": "2026-10-14",
+      "linkedFeatureId": "feat-6"
+    },
+    {
+      "id": "fb-107",
+      "title": "Duplicate feedback detection flagged 18 identical requests",
+      "description": "The duplicate warning modal helped us consolidate 18 duplicate customer requests for SSO/SAML integration into a single master feature record. Outstanding UX touch!",
+      "customer": "Amanda Torres",
+      "company": "SecureNet Systems",
+      "email": "atorres@securenet.io",
+      "category": "Usability",
+      "sentiment": "Positive",
+      "priority": "Medium",
+      "tags": [
+        "duplicate-detection",
+        "sso",
+        "consolidation",
+        "dedup"
+      ],
+      "date": "2026-10-13",
+      "linkedFeatureId": "feat-7"
+    },
+    {
+      "id": "fb-108",
+      "title": "Pricing page lacks clarity on seat limits for guest viewers",
+      "description": "We want stakeholders across marketing and sales to view roadmaps and release readiness without consuming full editor licenses. The tier comparison needs more transparent viewer-only pricing.",
+      "customer": "Liam O’Connor",
+      "company": "Starlight Media",
+      "email": "liam@starlight.co",
+      "category": "Pricing",
+      "sentiment": "Negative",
+      "priority": "Medium",
+      "tags": [
+        "pricing",
+        "licensing",
+        "viewer-roles",
+        "billing"
+      ],
+      "date": "2026-10-12",
+      "linkedFeatureId": "feat-8"
+    },
+    {
+      "id": "fb-109",
+      "title": "Roadmap timeline view needs drag-to-reschedule support",
+      "description": "In the timeline Gantt view, adjusting target completion dates requires opening the edit modal. It would be significantly faster if we could simply drag the end edge of a bar to reschedule.",
+      "customer": "Julian Bell",
+      "company": "Quantum Logic",
+      "email": "jbell@quantumlogic.ai",
+      "category": "Usability",
+      "sentiment": "Neutral",
+      "priority": "Medium",
+      "tags": [
+        "roadmap",
+        "timeline",
+        "gantt",
+        "drag-drop"
+      ],
+      "date": "2026-10-11",
+      "linkedFeatureId": "feat-9"
+    },
+    {
+      "id": "fb-110",
+      "title": "Release readiness checklist should block shipping if critical security fails",
+      "description": "We need the Go/No-Go button to have strict visual indicators when high-priority compliance or security checklist items are incomplete. Product managers should not accidentally mark it Ready.",
+      "customer": "Rachel Green",
+      "company": "Sentinel Cyber",
+      "email": "rgreen@sentinelcyber.com",
+      "category": "Reliability",
+      "sentiment": "Negative",
+      "priority": "Urgent",
+      "tags": [
+        "release-readiness",
+        "compliance",
+        "security",
+        "gating"
+      ],
+      "date": "2026-10-10",
+      "linkedFeatureId": "feat-10"
+    },
+    {
+      "id": "fb-111",
+      "title": "Slack webhook notifications on new high-urgency customer complaints",
+      "description": "When negative feedback tagged Urgent arrives, our product operations lead needs an instant Slack channel alert so we can investigate possible production outages right away.",
+      "customer": "Kevin Park",
+      "company": "Datacore Stream",
+      "email": "kpark@datacore.io",
+      "category": "Integrations",
+      "sentiment": "Neutral",
+      "priority": "High",
+      "tags": [
+        "slack",
+        "alerts",
+        "notifications",
+        "urgency"
+      ],
+      "date": "2026-10-09",
+      "linkedFeatureId": "feat-2"
+    },
+    {
+      "id": "fb-112",
+      "title": "Customer Journey stages need custom touchpoint color coding",
+      "description": "The journey map visualization is great, but we want to visually differentiate between marketing touchpoints, in-app interactions, and support escalations using colored badges.",
+      "customer": "Chloe Bennett",
+      "company": "Veloce Labs",
+      "email": "cbennett@velocelabs.com",
+      "category": "Usability",
+      "sentiment": "Positive",
+      "priority": "Low",
+      "tags": [
+        "customer-journey",
+        "touchpoints",
+        "styling",
+        "ux"
+      ],
+      "date": "2026-10-08",
+      "linkedFeatureId": null
+    },
+    {
+      "id": "fb-113",
+      "title": "Cannot undo accidental deletion of saved filter view",
+      "description": "I accidentally clicked delete on my favorite complex feedback filter view. It would be wonderful if the system had an Undo action in a toast or preserved it in activity history.",
+      "customer": "Gregory House",
+      "company": "MedMetrics",
+      "email": "ghouse@medmetrics.org",
+      "category": "Reliability",
+      "sentiment": "Negative",
+      "priority": "Medium",
+      "tags": [
+        "undo",
+        "history",
+        "saved-views",
+        "recovery"
+      ],
+      "date": "2026-10-07",
+      "linkedFeatureId": null
+    },
+    {
+      "id": "fb-114",
+      "title": "What-If simulator before-and-after chart clarifies trade-offs",
+      "description": "Showing the executive team how reprioritizing the mobile SDK drops two core enterprise features from rank #2 to #6 gave us unanimous alignment on our Q4 roadmap.",
+      "customer": "Jessica Wu",
+      "company": "NextGen Fintech",
+      "email": "jessica.wu@nextgen.co",
+      "category": "Satisfaction",
+      "sentiment": "Positive",
+      "priority": "Medium",
+      "tags": [
+        "simulator",
+        "tradeoffs",
+        "what-if",
+        "prioritization"
+      ],
+      "date": "2026-10-06",
+      "linkedFeatureId": "feat-6"
+    },
+    {
+      "id": "fb-115",
+      "title": "Dark mode contrast in Recharts tooltips needs slight improvement",
+      "description": "The dark mode palette is beautiful, but the background of chart hover cards occasionally blends with the navy background. Please add a subtle border or glow.",
+      "customer": "Tariq Al-Mansoor",
+      "company": "Orbit Design Co",
+      "email": "tariq@orbitdesign.ae",
+      "category": "Usability",
+      "sentiment": "Neutral",
+      "priority": "Low",
+      "tags": [
+        "dark-mode",
+        "charts",
+        "recharts",
+        "contrast",
+        "ui"
+      ],
+      "date": "2026-10-05",
+      "linkedFeatureId": null
+    },
+    {
+      "id": "fb-116",
+      "title": "Mobile responsiveness for on-call product managers",
+      "description": "When traveling or on-call, checking high-priority incoming feedback from a tablet or phone should feel smooth. The sidebar collapse on small screens works nicely.",
+      "customer": "Fiona Gallagher",
+      "company": "Beacon Systems",
+      "email": "fiona@beaconsys.com",
+      "category": "Performance",
+      "sentiment": "Positive",
+      "priority": "Low",
+      "tags": [
+        "mobile",
+        "responsive",
+        "tablet",
+        "layout"
+      ],
+      "date": "2026-10-04",
+      "linkedFeatureId": null
+    },
+    {
+      "id": "fb-117",
+      "title": "Exporting PRD directly to clean Markdown file is a lifesaver",
+      "description": "We commit all PRDs to our GitHub documentation repository. Being able to export the complete 13-section document as Markdown formatted text saved us so much time.",
+      "customer": "Nathaniel Drake",
+      "company": "Uncharted Games",
+      "email": "ndrake@uncharted.com",
+      "category": "Satisfaction",
+      "sentiment": "Positive",
+      "priority": "Medium",
+      "tags": [
+        "prd",
+        "markdown",
+        "export",
+        "documentation"
+      ],
+      "date": "2026-10-03",
+      "linkedFeatureId": "feat-5"
+    },
+    {
+      "id": "fb-118",
+      "title": "Pricing for small 5-person startups is slightly steep",
+      "description": "We love the product intelligence workspace, but early-stage bootstrap founders need a lightweight tier before committing to enterprise tier billing.",
+      "customer": "Zack Morris",
+      "company": "Bayside Ventures",
+      "email": "zack@bayside.vc",
+      "category": "Pricing",
+      "sentiment": "Negative",
+      "priority": "Low",
+      "tags": [
+        "pricing",
+        "startups",
+        "freemium",
+        "billing"
+      ],
+      "date": "2026-10-02",
+      "linkedFeatureId": "feat-8"
+    },
+    {
+      "id": "fb-119",
+      "title": "Automated Persona generation accurately categorized our 4 customer profiles",
+      "description": "The simulated NLP clustering generated persona cards that mirror our real user interviews with 90% fidelity. Elena (Enterprise IT) and Marcus (Product Lead) are spot on.",
+      "customer": "Lisa Cuddy",
+      "company": "Princeton Health Tech",
+      "email": "lcuddy@princetonhealth.org",
+      "category": "Satisfaction",
+      "sentiment": "Positive",
+      "priority": "Medium",
+      "tags": [
+        "personas",
+        "clustering",
+        "user-research",
+        "segmentation"
+      ],
+      "date": "2026-10-01",
+      "linkedFeatureId": "feat-7"
+    },
+    {
+      "id": "fb-120",
+      "title": "Intermittent delay when searching large feedback logs by keyword",
+      "description": "Searching for specific terms like \"latency\" in global search works well, but there is a slight 300ms stutter before matching results update. Debouncing could smooth this out.",
+      "customer": "Samir Horn",
+      "company": "Apex Global",
+      "email": "shorn@apexglobal.com",
+      "category": "Performance",
+      "sentiment": "Neutral",
+      "priority": "Medium",
+      "tags": [
+        "search",
+        "debounce",
+        "performance",
+        "latency"
+      ],
+      "date": "2026-09-30",
+      "linkedFeatureId": "feat-1"
+    }
+  ],
+  "initialFeatures": [
+    {
+      "id": "feat-1",
+      "name": "High-Performance Virtualized Data Grid",
+      "description": "Implement virtualized rendering for the feedback table and global search results, supporting 50,000+ records with 60fps scrolling and instantaneous filtering.",
+      "customerImpact": 9,
+      "urgency": 9,
+      "demand": 8,
+      "businessValue": 8,
+      "status": "In Development",
+      "owner": "Alex Rivera",
+      "targetRelease": "v2.4.0",
+      "relatedFeedbackIds": [
+        "fb-101",
+        "fb-120"
+      ],
+      "comments": [
+        {
+          "id": "c1",
+          "author": "Alex Rivera",
+          "text": "Targeting release with the v2.4.0 Spring package.",
+          "date": "2026-10-18"
+        }
+      ],
+      "score": 8.65
+    },
+    {
+      "id": "feat-2",
+      "name": "Bi-directional Jira & Linear Integration Engine",
+      "description": "Seamless two-way webhook integration to convert prioritized features, user stories, and acceptance criteria into Jira epics and Linear issues with automatic status sync.",
+      "customerImpact": 9,
+      "urgency": 8,
+      "demand": 9,
+      "businessValue": 9,
+      "status": "In Planning",
+      "owner": "Devon Patel",
+      "targetRelease": "v2.5.0",
+      "relatedFeedbackIds": [
+        "fb-102",
+        "fb-111"
+      ],
+      "comments": [
+        {
+          "id": "c2",
+          "author": "Devon Patel",
+          "text": "Architecture draft completed, OAuth endpoints designed.",
+          "date": "2026-10-17"
+        }
+      ],
+      "score": 8.7
+    },
+    {
+      "id": "feat-3",
+      "name": "Simulated AI Semantic Categorization & Smart Tagging",
+      "description": "Enhanced deterministic NLP keyword parser that clusters incoming customer sentiments, detects trending pain points, and suggests multi-tier categorization tags automatically.",
+      "customerImpact": 8,
+      "urgency": 7,
+      "demand": 8,
+      "businessValue": 8,
+      "status": "Ready for Release",
+      "owner": "Elena Rostova",
+      "targetRelease": "v2.4.0",
+      "relatedFeedbackIds": [
+        "fb-103"
+      ],
+      "comments": [],
+      "score": 7.7
+    },
+    {
+      "id": "feat-4",
+      "name": "Custom Executive Reporting & Multi-Format Exporter",
+      "description": "Export rich PDF and CSV executive summaries with full weighting factor breakdowns, interactive Recharts snapshots, and custom date range filters for stakeholder meetings.",
+      "customerImpact": 7,
+      "urgency": 7,
+      "demand": 8,
+      "businessValue": 7,
+      "status": "In Development",
+      "owner": "Marcus Chen",
+      "targetRelease": "v2.4.0",
+      "relatedFeedbackIds": [
+        "fb-104"
+      ],
+      "comments": [],
+      "score": 7.2
+    },
+    {
+      "id": "feat-5",
+      "name": "PRD Auto-Save & Version Snapshot Engine",
+      "description": "Automatic continuous draft saving to browser localStorage with visual timestamp badges, manual revision snapshots, and instantaneous restore to prevent accidental data loss.",
+      "customerImpact": 8,
+      "urgency": 8,
+      "demand": 7,
+      "businessValue": 6,
+      "status": "In Development",
+      "owner": "Alex Rivera",
+      "targetRelease": "v2.4.0",
+      "relatedFeedbackIds": [
+        "fb-105",
+        "fb-117"
+      ],
+      "comments": [],
+      "score": 7.5
+    },
+    {
+      "id": "feat-6",
+      "name": "Interactive What-If Scenario Comparison Workspace",
+      "description": "A sandbox environment where PMs can adjust impact, urgency, demand, and business value variables to simulate ranking shifts and chart trade-offs before committing changes.",
+      "customerImpact": 8,
+      "urgency": 6,
+      "demand": 7,
+      "businessValue": 8,
+      "status": "Ready for Release",
+      "owner": "Marcus Chen",
+      "targetRelease": "v2.4.0",
+      "relatedFeedbackIds": [
+        "fb-106",
+        "fb-114"
+      ],
+      "comments": [],
+      "score": 7.2
+    },
+    {
+      "id": "feat-7",
+      "name": "Smart Duplicate Request Detection & Merger",
+      "description": "Real-time text normalization and Jaccard keyword overlap analyzer that alerts product managers when newly submitted feedback matches an existing customer ticket.",
+      "customerImpact": 7,
+      "urgency": 6,
+      "demand": 7,
+      "businessValue": 7,
+      "status": "Launched",
+      "owner": "Elena Rostova",
+      "targetRelease": "v2.3.0",
+      "relatedFeedbackIds": [
+        "fb-107",
+        "fb-119"
+      ],
+      "comments": [],
+      "score": 6.7
+    },
+    {
+      "id": "feat-8",
+      "name": "Tiered Viewer Roles & Granular Workspace Access",
+      "description": "Support unlimited free view-only seats for sales and executive stakeholders with custom shareable links to roadmaps and release readiness reports.",
+      "customerImpact": 6,
+      "urgency": 5,
+      "demand": 6,
+      "businessValue": 8,
+      "status": "Evaluating",
+      "owner": "Alex Rivera",
+      "targetRelease": "v2.5.0",
+      "relatedFeedbackIds": [
+        "fb-108",
+        "fb-118"
+      ],
+      "comments": [],
+      "score": 6
+    },
+    {
+      "id": "feat-9",
+      "name": "Gantt-Style Interactive Drag-and-Drop Roadmap",
+      "description": "Visual timeline with interactive milestones, quarterly markers, progress sliders, and dependency link connectors for intuitive sprint planning.",
+      "customerImpact": 7,
+      "urgency": 6,
+      "demand": 6,
+      "businessValue": 6,
+      "status": "In Planning",
+      "owner": "Devon Patel",
+      "targetRelease": "v2.5.0",
+      "relatedFeedbackIds": [
+        "fb-109"
+      ],
+      "comments": [],
+      "score": 6.35
+    },
+    {
+      "id": "feat-10",
+      "name": "Automated Release Readiness Quality Gates",
+      "description": "Strict checklist validation system that gates Go/No-Go decisions on unverified security requirements, open urgent bugs, and incomplete test matrices.",
+      "customerImpact": 8,
+      "urgency": 9,
+      "demand": 7,
+      "businessValue": 8,
+      "status": "In Development",
+      "owner": "Alex Rivera",
+      "targetRelease": "v2.4.0",
+      "relatedFeedbackIds": [
+        "fb-110"
+      ],
+      "comments": [],
+      "score": 8.1
+    }
+  ],
+  "initialPersonas": [
+    {
+      "id": "per-1",
+      "name": "Elena Vance",
+      "role": "Enterprise IT & Security Director",
+      "companyType": "Fortune 500 Enterprise",
+      "avatar": "EV",
+      "description": "Responsible for procurement, compliance, SOC2 certification, and ensuring tools integrate safely into enterprise infrastructure.",
+      "goals": [
+        "Maintain 99.99% uptime and zero security breaches",
+        "Automate compliance audit trails across all SaaS tools",
+        "Enforce SSO/SAML and least-privilege role permissions"
+      ],
+      "frustrations": [
+        "Vague release readiness checklists without verification gates",
+        "Lack of clear audit logs and data export safeguards",
+        "Unannounced breaking changes and unvetted 3rd-party integrations"
+      ],
+      "needs": [
+        "Strict quality gates on release readiness",
+        "Granular role-based access control (RBAC)",
+        "Enterprise data residency and encryption verification"
+      ],
+      "featurePreferences": [
+        "Release Readiness Quality Gates",
+        "Tiered Viewer Roles"
+      ],
+      "sentimentSummary": "Neutral-Demanding",
+      "relatedFeedbackCount": 6,
+      "isFavorite": true
+    },
+    {
+      "id": "per-2",
+      "name": "Marcus Chen",
+      "role": "Lead Product Manager",
+      "companyType": "High-Growth B2B SaaS",
+      "avatar": "MC",
+      "description": "Drives sprint priorities, translates chaotic customer requests into structured PRDs, and defends roadmaps before executive leadership.",
+      "goals": [
+        "Prioritize high-impact features with mathematically backed rationale",
+        "Generate comprehensive, engineering-ready PRDs in under 15 minutes",
+        "Demonstrate clear ROI and trade-offs to the C-suite"
+      ],
+      "frustrations": [
+        "Subjective prioritization battles based on loudest voice in the room",
+        "Copy-pasting requirements between multiple disjointed tools",
+        "Losing PRD draft revisions when juggling multiple meetings"
+      ],
+      "needs": [
+        "Formulaic priority score breakdown (Impact, Urgency, Demand, Value)",
+        "What-If scenario simulation sandboxes",
+        "Executive presentation mode with live charts"
+      ],
+      "featurePreferences": [
+        "Interactive What-If Simulator",
+        "PRD Auto-Save Engine",
+        "Executive Presentation Mode"
+      ],
+      "sentimentSummary": "Highly Positive & Active",
+      "relatedFeedbackCount": 9,
+      "isFavorite": true
+    },
+    {
+      "id": "per-3",
+      "name": "Sarah Jenkins",
+      "role": "Product Operations & Customer Success Lead",
+      "companyType": "Mid-Market FinTech",
+      "avatar": "SJ",
+      "description": "Sits between support, sales, and product engineering. Manages feedback intake, triage, duplicate elimination, and customer communication.",
+      "goals": [
+        "Categorize and triage 200+ weekly customer tickets in minutes",
+        "Identify recurring customer pain points before churn accelerates",
+        "Provide closed-loop feedback updates to high-value accounts"
+      ],
+      "frustrations": [
+        "Slow table rendering and laggy search with large datasets",
+        "Duplicate feature requests cluttering backlog rankings",
+        "Difficulty tracing a specific customer complaint to its shipped roadmap item"
+      ],
+      "needs": [
+        "Sub-second virtualized data table rendering",
+        "Fuzzy duplicate detection during feedback entry",
+        "Automated NLP smart tagging"
+      ],
+      "featurePreferences": [
+        "High-Performance Virtualized Grid",
+        "Smart Duplicate Detection",
+        "AI Smart Tagging"
+      ],
+      "sentimentSummary": "Constructive & Analytical",
+      "relatedFeedbackCount": 8,
+      "isFavorite": false
+    },
+    {
+      "id": "per-4",
+      "name": "Devon Patel",
+      "role": "Staff Software Architect",
+      "companyType": "Cloud Infrastructure SaaS",
+      "avatar": "DP",
+      "description": "Owns engineering delivery, architectural feasibility, technical debt remediation, and cross-team dependencies.",
+      "goals": [
+        "Eliminate manual copy-pasting between product PRDs and Jira/Linear",
+        "Clear acceptance criteria and non-functional requirements upfront",
+        "Predictable dependency tracking on the release roadmap"
+      ],
+      "frustrations": [
+        "Vague user stories lacking concrete edge-case criteria",
+        "Unresolved blocking dependencies discovered mid-sprint",
+        "Lack of bi-directional status updates across engineering tooling"
+      ],
+      "needs": [
+        "Direct Jira / Linear bi-directional sync",
+        "Detailed 13-section PRD templates with edge-case criteria",
+        "Visual dependency markers on timeline roadmaps"
+      ],
+      "featurePreferences": [
+        "Bi-directional Jira & Linear Sync",
+        "Gantt-Style Roadmap"
+      ],
+      "sentimentSummary": "Engineering-Focused",
+      "relatedFeedbackCount": 5,
+      "isFavorite": false
+    }
+  ],
+  "initialPRDs": [
+    {
+      "id": "prd-1",
+      "title": "High-Performance Virtualized Data Grid Architecture",
+      "featureId": "feat-1",
+      "version": "1.2.0",
+      "status": "Completed",
+      "author": "Alex Rivera",
+      "createdAt": "2026-10-12",
+      "updatedAt": "2026-10-18",
+      "sections": {
+        "overview": "This document defines the technical architecture and user experience specifications for replacing our standard DOM table with a virtualized windowing table capable of handling 50,000+ customer feedback records with 60fps rendering and instant multi-column filtering.",
+        "problemStatement": "Customer feedback datasets exceed 5,000 records for scaling enterprise teams. The legacy DOM table suffers from 3-4 second render lag, freezing browser tabs and degrading product operations triage workflows.",
+        "targetUsers": "Product Operations Managers, Lead Product Managers, Customer Success Directors, Support Leads.",
+        "customerPainPoints": "Table lag during live triage, slow filter response, memory leaks on prolonged sessions, inability to quickly scroll through multi-thousand row historical exports.",
+        "proposedSolution": "Implement a custom virtualized row windowing engine with debounced search indices, Web Worker filtering pipelines, and zero-layout-thrashing CSS transforms.",
+        "goalsAndSuccessMetrics": "1. Sub-16ms frame render times during continuous scroll.\n2. Table load time < 200ms on 20,000 rows.\n3. Zero browser memory growth over 1 hour of sustained triage.",
+        "functionalRequirements": "1. Virtual row windowing rendering only DOM nodes visible within viewport + 5 item buffer.\n2. Multi-column sort by date, priority, sentiment, and category.\n3. Keyboard navigation with Up/Down arrow selection and Enter to open detail view.\n4. Quick filter chips with active count indicators.",
+        "nonFunctionalRequirements": "1. Total bundle footprint addition under 15KB.\n2. Memory usage capped below 40MB heap allocation.\n3. Accessible ARIA grid role attributes and screen reader row announcement.",
+        "userStories": "1. As a PM, I want to scroll through 10,000 customer feedback records without hitching so that I can rapidly scan sentiment.\n2. As a ProdOps lead, I want to filter by \"Urgent\" priority instantly so that I can address active production pain points immediately.",
+        "acceptanceCriteria": "1. Scrolling through 5,000 rows maintains 60fps measured via Performance DevTools.\n2. Filter queries update results in < 50ms.\n3. Full keyboard accessibility with focus outlines.",
+        "dependenciesAndConstraints": "Browser must support modern CSS containment and resize observers. Works fully client-side without server roundtrips.",
+        "risksAndMitigations": "Risk: Dynamic row heights could cause scroll jumping. Mitigation: Pre-calculated row height cache with estimated bounds.",
+        "releasePlan": "Ship in v2.4.0 Spring Release. Staged rollout with fallback toggle in Settings."
+      }
+    },
+    {
+      "id": "prd-2",
+      "title": "Bi-directional Jira and Linear Integration Pipeline",
+      "featureId": "feat-2",
+      "version": "1.0.0",
+      "status": "In Review",
+      "author": "Devon Patel",
+      "createdAt": "2026-10-15",
+      "updatedAt": "2026-10-17",
+      "sections": {
+        "overview": "Establishes a bi-directional data bridge connecting Product Mind AI features, user stories, and acceptance criteria to engineering issue trackers (Jira and Linear).",
+        "problemStatement": "Engineers and PMs spend 3-5 hours per sprint manually transcribing PRD requirements into Jira/Linear tickets, causing discrepancies and lost context.",
+        "targetUsers": "Product Managers, Engineering Leads, Scrum Masters, Tech Leads.",
+        "customerPainPoints": "Duplicate data entry, out-of-sync status indicators between roadmap and sprint boards, missing acceptance criteria during engineering implementation.",
+        "proposedSolution": "Provide direct 1-click issue creation with mapped custom fields and webhook listeners that automatically update roadmap status when engineering tickets close.",
+        "goalsAndSuccessMetrics": "1. 90% reduction in time spent creating engineering tickets from PRDs.\n2. 100% sync fidelity between feature status and issue tracker status.",
+        "functionalRequirements": "1. OAuth2 integration setup wizard for Jira and Linear.\n2. Configurable project and epic mapping.\n3. 1-click \"Push User Stories to Sprint\" button in PRD editor.\n4. Inbound webhook listener for state updates.",
+        "nonFunctionalRequirements": "1. Resilient webhook retry queue with exponential backoff.\n2. End-to-end token encryption in browser session.",
+        "userStories": "1. As a PM, I want to click \"Create Jira Epics\" from my PRD so that my engineering team receives formatted user stories instantly.\n2. As an engineer, I want closing my Linear ticket to mark the roadmap item \"Shipped\" automatically.",
+        "acceptanceCriteria": "1. Pushing a PRD with 5 user stories creates 5 linked child issues in target workspace.\n2. Changing ticket status to Done triggers roadmap progress update.",
+        "dependenciesAndConstraints": "Requires external API tokens or webhook simulation in mock mode.",
+        "risksAndMitigations": "Risk: Rate limits on external APIs. Mitigation: Client-side batched requests and intelligent caching.",
+        "releasePlan": "Beta access scheduled for v2.5.0 Enterprise Tier."
+      }
+    }
+  ],
+  "initialRoadmap": [
+    {
+      "id": "rd-1",
+      "title": "High-Performance Virtual Grid",
+      "description": "Virtualized table engine supporting 50k+ feedback rows at 60fps.",
+      "featureId": "feat-1",
+      "status": "In Progress",
+      "priority": "Urgent",
+      "owner": "Alex Rivera",
+      "startDate": "2026-10-01",
+      "targetDate": "2026-11-15",
+      "milestone": "Q4 Core Platform",
+      "progress": 75,
+      "dependencies": [],
+      "notes": "Virtualizer engine passing automated stress tests; finishing keyboard navigation."
+    },
+    {
+      "id": "rd-2",
+      "title": "Interactive What-If Scenario Sandbox",
+      "description": "Real-time slider simulation comparing algorithmic priority changes.",
+      "featureId": "feat-6",
+      "status": "In Progress",
+      "priority": "High",
+      "owner": "Marcus Chen",
+      "startDate": "2026-09-15",
+      "targetDate": "2026-10-30",
+      "milestone": "Q4 Core Platform",
+      "progress": 90,
+      "dependencies": [],
+      "notes": "Recharts before-and-after visualization ready for release readiness review."
+    },
+    {
+      "id": "rd-3",
+      "title": "AI Smart Tagging & Sentiment Categorization",
+      "description": "Deterministic NLP clustering for instant feedback triage.",
+      "featureId": "feat-3",
+      "status": "Shipped",
+      "priority": "High",
+      "owner": "Elena Rostova",
+      "startDate": "2026-08-01",
+      "targetDate": "2026-09-30",
+      "milestone": "Q3 Intelligence",
+      "progress": 100,
+      "dependencies": [],
+      "notes": "Successfully deployed in v2.3.0. Reduced triage overhead by 65%."
+    },
+    {
+      "id": "rd-4",
+      "title": "Automated Release Readiness Quality Gates",
+      "description": "Configurable Go/No-Go release checklists with automated verification blocks.",
+      "featureId": "feat-10",
+      "status": "In Progress",
+      "priority": "Urgent",
+      "owner": "Alex Rivera",
+      "startDate": "2026-10-10",
+      "targetDate": "2026-11-20",
+      "milestone": "Q4 Core Platform",
+      "progress": 60,
+      "dependencies": [
+        "rd-1"
+      ],
+      "notes": "Checklist rules defined; integrating security gating blockers."
+    },
+    {
+      "id": "rd-5",
+      "title": "Bi-directional Jira & Linear Sync",
+      "description": "Two-way integration for syncing PRD stories and engineering tasks.",
+      "featureId": "feat-2",
+      "status": "Planned",
+      "priority": "High",
+      "owner": "Devon Patel",
+      "startDate": "2026-11-01",
+      "targetDate": "2026-12-30",
+      "milestone": "Q1 Enterprise Scale",
+      "progress": 20,
+      "dependencies": [],
+      "notes": "OAuth flow and field mapping schemas documented in PRD-2."
+    },
+    {
+      "id": "rd-6",
+      "title": "Custom Executive Reporting & Multi-Format Exporter",
+      "description": "Comprehensive PDF and CSV export suite with weighted factor breakdowns.",
+      "featureId": "feat-4",
+      "status": "In Progress",
+      "priority": "Medium",
+      "owner": "Marcus Chen",
+      "startDate": "2026-10-05",
+      "targetDate": "2026-11-10",
+      "milestone": "Q4 Core Platform",
+      "progress": 70,
+      "dependencies": [],
+      "notes": "Print-friendly CSS styling tuned; adding CSV matrix generation."
+    },
+    {
+      "id": "rd-7",
+      "title": "PRD Auto-Save & Revision Engine",
+      "description": "Continuous local snapshotting and markdown export formatting.",
+      "featureId": "feat-5",
+      "status": "Shipped",
+      "priority": "Medium",
+      "owner": "Alex Rivera",
+      "startDate": "2026-09-01",
+      "targetDate": "2026-10-10",
+      "milestone": "Q3 Intelligence",
+      "progress": 100,
+      "dependencies": [],
+      "notes": "Local storage caching with version history rollback functional."
+    },
+    {
+      "id": "rd-8",
+      "title": "Tiered Viewer Roles & Granular Permissions",
+      "description": "Free stakeholder viewer seats with shareable roadmap views.",
+      "featureId": "feat-8",
+      "status": "Planned",
+      "priority": "Low",
+      "owner": "Alex Rivera",
+      "startDate": "2026-12-01",
+      "targetDate": "2027-01-30",
+      "milestone": "Q1 Enterprise Scale",
+      "progress": 10,
+      "dependencies": [
+        "rd-5"
+      ],
+      "notes": "Waiting for Enterprise auth tier specification."
+    }
+  ],
+  "initialExperiments": [
+    {
+      "id": "exp-1",
+      "name": "1-Click Guided Product Tour Adoption",
+      "problem": "First-time users were abandoning the workspace before discovering the Priority Scoring formula and What-If simulator.",
+      "hypothesis": "Displaying an interactive 4-step guided spotlight tour will increase user activation and feature prioritization engagement by 35%.",
+      "targetAudience": "All newly registered workspace users",
+      "proposedChange": "Auto-launch a sleek floating tour modal highlighting Dashboard KPIs, Feedback Explorer, Prioritization matrix, and PRD Generator.",
+      "successMetric": "Activation Rate (Completed first PRD or feature prioritization in session 1)",
+      "baseline": 28,
+      "target": 50,
+      "observedValue": 54.2,
+      "startDate": "2026-09-15",
+      "endDate": "2026-10-15",
+      "linkedFeatureId": "feat-6",
+      "owner": "Marcus Chen",
+      "status": "Completed",
+      "conclusion": "Roll Out",
+      "notes": "Observed a 93% relative lift in Day-1 activation. Promoted to default onboarding experience."
+    },
+    {
+      "id": "exp-2",
+      "name": "Automated Smart Tagging on Ingestion",
+      "problem": "Product Operations team spent 12 hours a week manually reading and tagging feedback tickets.",
+      "hypothesis": "Running deterministic NLP keyword tag suggestions during CSV import will reduce manual tagging time by over 50% without dropping precision.",
+      "targetAudience": "Product Operations & Customer Success triage teams",
+      "proposedChange": "Pre-populate suggested tags with 1-click confirmation chip badges.",
+      "successMetric": "Triage Time per 100 items (minutes)",
+      "baseline": 75,
+      "target": 30,
+      "observedValue": 24.5,
+      "startDate": "2026-10-01",
+      "endDate": "2026-10-25",
+      "linkedFeatureId": "feat-3",
+      "owner": "Elena Rostova",
+      "status": "Running",
+      "conclusion": "Continue",
+      "notes": "Tagging accuracy currently at 94.8% based on user retention of suggested chips."
+    },
+    {
+      "id": "exp-3",
+      "name": "Dark Mode Default for Technical Users",
+      "problem": "Developers and technical product architects expressed visual fatigue when switching from code editors to bright dashboards.",
+      "hypothesis": "Detecting system prefers-color-scheme dark mode and defaulting to high-contrast deep navy surface will increase session duration by 20%.",
+      "targetAudience": "Desktop web visitors with system dark preference",
+      "proposedChange": "Enable dark mode by default if system preference indicates dark, while preserving manual toggle in header.",
+      "successMetric": "Average Session Duration (minutes)",
+      "baseline": 8.5,
+      "target": 11,
+      "observedValue": 12.3,
+      "startDate": "2026-10-05",
+      "endDate": "2026-10-20",
+      "linkedFeatureId": null,
+      "owner": "Alex Rivera",
+      "status": "Completed",
+      "conclusion": "Roll Out",
+      "notes": "Statistically significant increase in session length and user satisfaction ratings."
+    }
+  ],
+  "initialReleases": [
+    {
+      "id": "rel-1",
+      "name": "Spring Intelligence Release",
+      "version": "v2.4.0",
+      "description": "High-performance virtualized grid, What-If scenario sandbox, executive reporting, and quality gated release checklists.",
+      "plannedDate": "2026-11-15",
+      "owner": "Alex Rivera",
+      "status": "In Progress",
+      "includedFeatureIds": [
+        "feat-1",
+        "feat-4",
+        "feat-5",
+        "feat-6",
+        "feat-10"
+      ],
+      "roadmapItemIds": [
+        "rd-1",
+        "rd-2",
+        "rd-4",
+        "rd-6"
+      ],
+      "checklist": [
+        {
+          "id": "chk-1",
+          "title": "Requirements completed & signed off by product lead",
+          "completed": true,
+          "required": true
+        },
+        {
+          "id": "chk-2",
+          "title": "Acceptance criteria verified across all included user stories",
+          "completed": true,
+          "required": true
+        },
+        {
+          "id": "chk-3",
+          "title": "High-priority customer issues & bugs reviewed (zero urgent blockers)",
+          "completed": false,
+          "required": true
+        },
+        {
+          "id": "chk-4",
+          "title": "Dependencies resolved across infrastructure & integrations",
+          "completed": true,
+          "required": true
+        },
+        {
+          "id": "chk-5",
+          "title": "Automated Vitest suite & RTL integration tests passing",
+          "completed": true,
+          "required": true
+        },
+        {
+          "id": "chk-6",
+          "title": "Documentation prepared & PRDs committed to repository",
+          "completed": true,
+          "required": false
+        },
+        {
+          "id": "chk-7",
+          "title": "Release notes written & formatted for customer portal",
+          "completed": false,
+          "required": false
+        },
+        {
+          "id": "chk-8",
+          "title": "Final executive approval recorded & verified",
+          "completed": false,
+          "required": true
+        }
+      ],
+      "releaseNotes": "### v2.4.0 Spring Intelligence\n- **Virtualized Grid**: 60fps rendering for 50,000+ customer feedback records.\n- **What-If Sandbox**: Real-time slider simulation to compare ranking shifts.\n- **Executive Exporter**: One-click PDF & CSV executive summaries.\n- **PRD Autosave**: Resilient browser-side draft snapshots with instant rollback."
+    },
+    {
+      "id": "rel-2",
+      "name": "Enterprise Scale Release",
+      "version": "v2.5.0",
+      "description": "Bi-directional Jira/Linear sync, tiered viewer seats, and enterprise single sign-on authentication.",
+      "plannedDate": "2026-12-30",
+      "owner": "Devon Patel",
+      "status": "Planned",
+      "includedFeatureIds": [
+        "feat-2",
+        "feat-8",
+        "feat-9"
+      ],
+      "roadmapItemIds": [
+        "rd-5",
+        "rd-8"
+      ],
+      "checklist": [
+        {
+          "id": "chk-201",
+          "title": "Requirements completed & signed off by product lead",
+          "completed": false,
+          "required": true
+        },
+        {
+          "id": "chk-202",
+          "title": "Acceptance criteria verified across all included user stories",
+          "completed": false,
+          "required": true
+        },
+        {
+          "id": "chk-203",
+          "title": "High-priority customer issues & bugs reviewed (zero urgent blockers)",
+          "completed": false,
+          "required": true
+        },
+        {
+          "id": "chk-204",
+          "title": "Dependencies resolved across infrastructure & integrations",
+          "completed": false,
+          "required": true
+        },
+        {
+          "id": "chk-205",
+          "title": "Automated Vitest suite & RTL integration tests passing",
+          "completed": false,
+          "required": true
+        },
+        {
+          "id": "chk-206",
+          "title": "Documentation prepared & PRDs committed to repository",
+          "completed": false,
+          "required": false
+        },
+        {
+          "id": "chk-207",
+          "title": "Release notes written & formatted for customer portal",
+          "completed": false,
+          "required": false
+        },
+        {
+          "id": "chk-208",
+          "title": "Final executive approval recorded & verified",
+          "completed": false,
+          "required": true
+        }
+      ],
+      "releaseNotes": "Planned release introducing bi-directional issue tracking synchronization and viewer licenses."
+    }
+  ],
+  "initialCompetitors": [
+    {
+      "id": "comp-1",
+      "name": "ProductBoard Pro",
+      "productDescription": "Standard product management system with customer feedback intake and roadmap boards.",
+      "website": "https://productboard.example.com",
+      "targetAudience": "Enterprise product management teams",
+      "keyFeatures": [
+        "Feedback inbox",
+        "Roadmap timelines",
+        "Basic feature prioritization matrix"
+      ],
+      "strengths": [
+        "Strong enterprise brand awareness",
+        "Existing ecosystem integrations"
+      ],
+      "weaknesses": [
+        "Opaque prioritization formulas without customizable factor weights",
+        "Lacks interactive What-If scenario comparison sandbox",
+        "No built-in 13-section PRD generator",
+        "Expensive per-seat pricing that limits stakeholder access"
+      ],
+      "differentiators": [
+        "Product Mind AI provides transparent formulaic scoring with exact weight breakdowns",
+        "Real-time What-If sandbox before committing changes",
+        "Built-in AI Copilot and automated customer persona generation"
+      ],
+      "researchNotes": "Customers frequently complain about slow performance on large feedback volumes and inflexible roadmaps.",
+      "lastReviewed": "2026-10-10"
+    },
+    {
+      "id": "comp-2",
+      "name": "Pendo Feedback Intelligence",
+      "productDescription": "Analytics and in-app guidance platform with feedback capture module.",
+      "website": "https://pendo.example.com",
+      "targetAudience": "Product ops and analytics-heavy tech companies",
+      "keyFeatures": [
+        "In-app guides",
+        "Clickstream tracking",
+        "Customer feature voting"
+      ],
+      "strengths": [
+        "Deep telemetry and product usage analytics"
+      ],
+      "weaknesses": [
+        "Feedback module feels bolted-on rather than purpose-built",
+        "Voting boards suffer from recency bias without urgency weighting",
+        "Very expensive annual contracts ($20k+ entry)"
+      ],
+      "differentiators": [
+        "Focuses strictly on product intelligence, PRDs, and release governance rather than generic analytics",
+        "Lightweight local execution with instantaneous responsiveness"
+      ],
+      "researchNotes": "Good at quantitative clicks, poor at qualitative pain-point synthesis and PRD drafting.",
+      "lastReviewed": "2026-10-05"
+    },
+    {
+      "id": "comp-3",
+      "name": "Aha! Roadmaps",
+      "productDescription": "Comprehensive strategy and roadmapping suite for project managers.",
+      "website": "https://aha.example.com",
+      "targetAudience": "Traditional enterprise IT project managers",
+      "keyFeatures": [
+        "Strategy trees",
+        "Complex Gantt charts",
+        "Release tracking"
+      ],
+      "strengths": [
+        "Vast configuration options and compliance reporting"
+      ],
+      "weaknesses": [
+        "Extremely steep learning curve and cluttered, dated UI",
+        "Overwhelming menus with hundreds of sub-options",
+        "No interactive modern AI Copilot or scenario simulations"
+      ],
+      "differentiators": [
+        "Product Mind AI features a modern, clean, dark-mode-first aesthetic with cinematic polish",
+        "Designed specifically for modern AI-native product managers rather than traditional project planners"
+      ],
+      "researchNotes": "Users describe Aha! as \"the SAP of product management\" — powerful but difficult to navigate.",
+      "lastReviewed": "2026-09-28"
+    }
+  ],
+  "initialCustomerJourneys": [
+    {
+      "id": "stage-1",
+      "name": "Discovery",
+      "order": 1,
+      "description": "Prospective customers evaluate product intelligence solutions, visit marketing materials, and explore live demos.",
+      "touchpoints": [
+        {
+          "id": "tp-101",
+          "name": "Product Marketing Landing Page",
+          "sentiment": "Positive",
+          "painPoints": "Pricing tiers for viewer-only seats unclear",
+          "opportunity": "Add transparent calculator for viewer licenses"
+        },
+        {
+          "id": "tp-102",
+          "name": "Interactive Demo & Guided Tour",
+          "sentiment": "Positive",
+          "painPoints": "None reported",
+          "opportunity": "Spotlight What-If simulation during demo"
+        }
+      ]
+    },
+    {
+      "id": "stage-2",
+      "name": "Onboarding",
+      "order": 2,
+      "description": "New workspace creation, initial CSV customer feedback upload, and team invitation.",
+      "touchpoints": [
+        {
+          "id": "tp-201",
+          "name": "CSV Feedback Upload Wizard",
+          "sentiment": "Neutral",
+          "painPoints": "Column mapping errors on malformed CSV rows",
+          "opportunity": "Provide 1-click sample CSV download and auto-correction"
+        },
+        {
+          "id": "tp-202",
+          "name": "Workspace Configuration",
+          "sentiment": "Positive",
+          "painPoints": "None",
+          "opportunity": "Seed realistic demonstration data on new workspace creation"
+        }
+      ]
+    },
+    {
+      "id": "stage-3",
+      "name": "Activation",
+      "order": 3,
+      "description": "First feature prioritization, scoring calculation, and generation of engineering PRD.",
+      "touchpoints": [
+        {
+          "id": "tp-301",
+          "name": "Feature Prioritization Matrix",
+          "sentiment": "Positive",
+          "painPoints": "Users want to understand exact weight formula",
+          "opportunity": "Display factor breakdown tooltip and formula equation"
+        },
+        {
+          "id": "tp-302",
+          "name": "PRD Document Generator",
+          "sentiment": "Positive",
+          "painPoints": "Fear of draft loss during long sessions",
+          "opportunity": "Add real-time auto-save with timestamp pill"
+        }
+      ]
+    },
+    {
+      "id": "stage-4",
+      "name": "Engagement",
+      "order": 4,
+      "description": "Weekly sprint planning, What-If trade-off exploration, and roadmap updates.",
+      "touchpoints": [
+        {
+          "id": "tp-401",
+          "name": "What-If Product Simulator",
+          "sentiment": "Positive",
+          "painPoints": "Stakeholders need comparison PDF exports",
+          "opportunity": "Add 1-click before-and-after chart export"
+        },
+        {
+          "id": "tp-402",
+          "name": "Roadmap Timeline Schedule",
+          "sentiment": "Neutral",
+          "painPoints": "Manual modal editing needed to change dates",
+          "opportunity": "Enable drag-to-reschedule timeline bars"
+        }
+      ]
+    },
+    {
+      "id": "stage-5",
+      "name": "Retention & Expansion",
+      "order": 5,
+      "description": "Quarterly executive reviews, release readiness gating, and enterprise contract renewal.",
+      "touchpoints": [
+        {
+          "id": "tp-501",
+          "name": "Release Readiness Go/No-Go Gate",
+          "sentiment": "Neutral",
+          "painPoints": "Need strict block if security checklist fails",
+          "opportunity": "Enforce gated button state until required checks pass"
+        },
+        {
+          "id": "tp-502",
+          "name": "Executive Presentation Mode",
+          "sentiment": "Positive",
+          "painPoints": "None",
+          "opportunity": "Add keyboard navigation shortcut hints"
+        }
+      ]
+    }
+  ],
+  "initialScenarios": [
+    {
+      "id": "scen-1",
+      "name": "Q3 Enterprise Security & Compliance Acceleration",
+      "description": "Simulates increasing urgency and business value on release readiness gating and Jira integration while deprioritizing drag-and-drop roadmaps.",
+      "createdAt": "2026-10-16",
+      "adjustedFeatures": [
+        {
+          "featureId": "feat-10",
+          "customerImpact": 9,
+          "urgency": 10,
+          "demand": 8,
+          "businessValue": 9
+        },
+        {
+          "featureId": "feat-2",
+          "customerImpact": 9,
+          "urgency": 9,
+          "demand": 9,
+          "businessValue": 9
+        },
+        {
+          "featureId": "feat-9",
+          "customerImpact": 6,
+          "urgency": 4,
+          "demand": 5,
+          "businessValue": 4
+        }
+      ]
+    }
+  ]
+}
