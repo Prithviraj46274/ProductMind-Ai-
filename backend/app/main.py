@@ -1,14 +1,56 @@
 """
 ProductMind AI — FastAPI Application Entry Point
-Phase 2, Step 1: Base Application Initialization, Metadata, CORS, and Modular Routing.
+Phase 2, Step 2: Lifecycle Management (Lifespan Context), MongoDB Integration,
+CORS, and Modular Routing.
 """
 
-from typing import Dict, Any
+from contextlib import asynccontextmanager
+import logging
+from typing import Dict, Any, AsyncGenerator
 from fastapi import FastAPI, status
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
+from app.database.connection import MongoDBManager
 from app.api.v1 import api_router
+
+logger = logging.getLogger("productmind.app")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+    """
+    Manages application startup and shutdown lifecycle.
+    Initializes and verifies the MongoDB connection on startup,
+    and cleanly closes connection pools on shutdown.
+    """
+    # -------------------------------------------------------------------------
+    # Application Startup
+    # -------------------------------------------------------------------------
+    logger.info("Starting up %s (v%s)...", settings.PROJECT_NAME, settings.VERSION)
+    try:
+        db = await MongoDBManager.connect_async(settings.MONGODB_URI)
+        app.state.mongo_client = MongoDBManager._async_client
+        app.state.mongo_db = db
+        logger.info("Connected to MongoDB successfully. Target database: [%s]", db.name)
+    except Exception as exc:
+        logger.error("Failed to connect to MongoDB during startup: %s", exc)
+        app.state.mongo_client = None
+        app.state.mongo_db = None
+
+    yield
+
+    # -------------------------------------------------------------------------
+    # Application Shutdown
+    # -------------------------------------------------------------------------
+    logger.info("Shutting down %s...", settings.PROJECT_NAME)
+    try:
+        await MongoDBManager.close_async()
+        app.state.mongo_client = None
+        app.state.mongo_db = None
+        logger.info("MongoDB connection closed gracefully.")
+    except Exception as exc:
+        logger.error("Error closing MongoDB connection: %s", exc)
 
 
 def create_application() -> FastAPI:
@@ -20,6 +62,7 @@ def create_application() -> FastAPI:
         openapi_url=f"{settings.API_V1_STR}/openapi.json",
         docs_url="/docs",
         redoc_url="/redoc",
+        lifespan=lifespan,
     )
 
     # Configure CORS Middleware
@@ -49,6 +92,7 @@ def create_application() -> FastAPI:
             "environment": settings.ENVIRONMENT,
             "docs": "/docs",
             "health": f"{settings.API_V1_STR}/health",
+            "database_health": f"{settings.API_V1_STR}/health/database",
             "openapi": f"{settings.API_V1_STR}/openapi.json",
         }
 

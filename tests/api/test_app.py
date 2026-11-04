@@ -68,3 +68,4 @@ def test_cors_middleware_configured():
     )
     assert response.status_code == 200
     assert response.headers.get("access-control-allow-origin") == test_origin
+
