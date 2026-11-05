@@ -13,6 +13,7 @@ from app.ai.exceptions import (
     AIAuthenticationException,
     AIRateLimitException,
     AITimeoutException,
+    AIProviderException,
     AIServiceException,
 )
 from app.ai.llm_service import LLMService, get_llm_service
@@ -133,3 +134,20 @@ def test_ai_test_endpoint_timeout_returns_504():
     response = client.post("/api/v1/ai/test", json={})
     assert response.status_code == 504
     assert "timed out" in response.json()["detail"].lower()
+
+
+def test_ai_test_endpoint_provider_unavailable_returns_503():
+    """Verify provider 503 unavailable maps to HTTP 503."""
+    mock_service = AsyncMock(spec=LLMService)
+    mock_service.is_configured = True
+    mock_service.generate_text.side_effect = AIProviderException(
+        "Google Gemini model 'gemini-3.8-flash' is currently unavailable due to high demand (503 UNAFAILABLE). Spikes in demand are temporary. Please retry shortly.",
+        provider="google",
+    )
+
+    app.dependency_overrides[get_llm_service] = lambda: mock_service
+
+    response = client.post("/api/v1/ai/test", json={})
+    assert response.status_code == 503
+    assert "unavailable" in response.json()["detail"].lower() or "503" in response.json()["detail"]
+

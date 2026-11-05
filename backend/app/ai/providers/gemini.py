@@ -69,15 +69,31 @@ class GeminiProvider(BaseLLMProvider):
         if not has_custom_params and self._cached_client is not None:
             return self._cached_client
 
+        # Gemini 3 series compatibility:
+        # Per Google developer guidelines, Gemini 3 reasoning models recommend temperature=1.0
+        # (or model default). Legacy low temperatures like 0.2 degrade reasoning performance.
+        is_gemini_3 = self.settings.AI_MODEL.lower().startswith("gemini-3")
+        if temperature is not None:
+            resolved_temperature = temperature
+        elif is_gemini_3 and self.settings.AI_TEMPERATURE == 0.2:
+            resolved_temperature = 1.0
+        else:
+            resolved_temperature = self.settings.AI_TEMPERATURE
+
+        # Filter out legacy thinking_budget if present when calling Gemini 3 models
+        filtered_kwargs = dict(kwargs)
+        if is_gemini_3 and "thinking_budget" in filtered_kwargs:
+            filtered_kwargs.pop("thinking_budget")
+
         try:
             client = ChatGoogleGenerativeAI(
                 model=self.settings.AI_MODEL,
                 google_api_key=self.settings.GOOGLE_API_KEY,
-                temperature=temperature if temperature is not None else self.settings.AI_TEMPERATURE,
+                temperature=resolved_temperature,
                 max_output_tokens=max_output_tokens if max_output_tokens is not None else self.settings.AI_MAX_OUTPUT_TOKENS,
                 timeout=timeout if timeout is not None else self.settings.AI_TIMEOUT_SECONDS,
                 max_retries=max_retries if max_retries is not None else self.settings.AI_MAX_RETRIES,
-                **kwargs,
+                **filtered_kwargs,
             )
 
             if not has_custom_params:
@@ -181,13 +197,15 @@ class GeminiProvider(BaseLLMProvider):
                 original_exception=exc,
             )
 
-        # 3. Timeout errors
+        # 3. Timeout & Deadline Exceeded errors (504, DEADLINE_EXCEEDED, asyncio.TimeoutError)
         if (
             "deadlineexceeded" in exc_type
             or "timeout" in exc_type
             or isinstance(exc, (asyncio.TimeoutError, TimeoutError))
             or "timed out" in exc_str
             or "deadline exceeded" in exc_str
+            or "deadline_exceeded" in exc_str
+            or "504" in exc_str
         ):
             return AITimeoutException(
                 f"Google Gemini request exceeded timeout threshold ({self.settings.AI_TIMEOUT_SECONDS}s).",
@@ -195,7 +213,20 @@ class GeminiProvider(BaseLLMProvider):
                 original_exception=exc,
             )
 
-        # 4. Model not found or unsupported
+        # 4. Service Unavailable & High Demand (503, UNAVAILABLE)
+        if (
+            "unavailable" in exc_type
+            or "503" in exc_str
+            or "unavailable" in exc_str
+            or "high demand" in exc_str
+        ):
+            return AIProviderException(
+                f"Google Gemini model '{self.model_name}' is currently unavailable due to high demand (503 UNAVAILABLE). Spikes in demand are temporary. Please retry shortly.",
+                provider=self.provider_name,
+                original_exception=exc,
+            )
+
+        # 5. Model not found or unsupported
         if "notfound" in exc_type or "404" in exc_str or "not found" in exc_str:
             return AIProviderException(
                 f"Configured Google Gemini model '{self.model_name}' is not found or unsupported.",
@@ -203,7 +234,7 @@ class GeminiProvider(BaseLLMProvider):
                 original_exception=exc,
             )
 
-        # 5. General provider error
+        # 6. General provider error
         return AIProviderException(
             f"Google Gemini service error: {type(exc).__name__}",
             provider=self.provider_name,

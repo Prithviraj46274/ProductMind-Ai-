@@ -158,3 +158,59 @@ def test_gemini_error_mapping_model_not_found(configured_settings):
     assert isinstance(mapped, AIProviderException)
     assert "not found" in str(mapped).lower()
 
+
+def test_gemini_error_mapping_deadline_exceeded_with_underscore(configured_settings):
+    """Verify ServerError with DEADLINE_EXCEEDED / 504 maps to AITimeoutException."""
+    provider = GeminiProvider(settings=configured_settings)
+
+    deadline_error = Exception(
+        "504 DEADLINE_EXCEEDED. {'error': {'code': 504, 'message': 'Deadline expired before operation could complete.', 'status': 'DEADLINE_EXCEEDED'}}"
+    )
+    mapped = provider._map_exception(deadline_error)
+    assert isinstance(mapped, AITimeoutException)
+    assert mapped.provider == "google"
+
+
+def test_gemini_error_mapping_503_unavailable_high_demand(configured_settings):
+    """Verify ServerError with 503 UNAVAILABLE maps to AIProviderException with clear guidance."""
+    provider = GeminiProvider(settings=configured_settings)
+
+    unavailable_error = Exception(
+        "503 UNAVAILABLE. {'error': {'code': 503, 'message': 'This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.', 'status': 'UNAVAILABLE'}}"
+    )
+    mapped = provider._map_exception(unavailable_error)
+    assert isinstance(mapped, AIProviderException)
+    assert "high demand" in mapped.message.lower() or "503" in mapped.message
+
+
+@patch("app.ai.providers.gemini.ChatGoogleGenerativeAI")
+def test_gemini_3_temperature_adaptation(mock_chat_cls):
+    """Verify Gemini 3 models adapt legacy temperature 0.2 to 1.0 per Google guidelines."""
+    settings = AISettings(
+        GOOGLE_API_KEY="AIzaSyMockKey",
+        AI_MODEL="gemini-3.8-flash",
+        AI_TEMPERATURE=0.2,
+    )
+    provider = GeminiProvider(settings=settings)
+    provider.get_chat_model()
+
+    mock_chat_cls.assert_called_once()
+    _, kwargs = mock_chat_cls.call_args
+    assert kwargs["temperature"] == 1.0
+
+
+@patch("app.ai.providers.gemini.ChatGoogleGenerativeAI")
+def test_gemini_3_thinking_budget_stripping(mock_chat_cls):
+    """Verify legacy thinking_budget is stripped for Gemini 3 models."""
+    settings = AISettings(
+        GOOGLE_API_KEY="AIzaSyMockKey",
+        AI_MODEL="gemini-3.8-flash",
+    )
+    provider = GeminiProvider(settings=settings)
+    provider.get_chat_model(thinking_budget=1024)
+
+    mock_chat_cls.assert_called_once()
+    _, kwargs = mock_chat_cls.call_args
+    assert "thinking_budget" not in kwargs
+
+

@@ -124,6 +124,17 @@ async def test_ai_connectivity(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=f"AI configuration error: {exc.message}",
         )
+    except AIProviderException as exc:
+        logger.error("AI provider error: %s", exc)
+        status_code = (
+            status.HTTP_503_SERVICE_UNAVAILABLE
+            if "503" in exc.message or "unavailable" in exc.message.lower()
+            else status.HTTP_502_BAD_GATEWAY
+        )
+        raise HTTPException(
+            status_code=status_code,
+            detail=exc.message,
+        )
     except AIServiceException as exc:
         logger.error("AI test service failure: %s", exc)
         raise HTTPException(
