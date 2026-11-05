@@ -93,6 +93,7 @@ def create_application() -> FastAPI:
             "docs": "/docs",
             "health": f"{settings.API_V1_STR}/health",
             "database_health": f"{settings.API_V1_STR}/health/database",
+            "ai_health": f"{settings.API_V1_STR}/ai/health",
             "openapi": f"{settings.API_V1_STR}/openapi.json",
         }
 

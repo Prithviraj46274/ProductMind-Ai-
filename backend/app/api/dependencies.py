@@ -306,3 +306,39 @@ async def get_current_user(
     request.state.session_family = payload.get("session_family")
 
     return user
+
+
+async def get_optional_current_user(
+    request: Request,
+    token: Optional[str] = Depends(oauth2_scheme),
+) -> Optional[User]:
+    """
+    Extracts and verifies Bearer token if provided.
+    Returns authenticated User if valid, None if no token was provided.
+    Raises HTTP 401 Unauthorized if a malformed, expired, or revoked token was provided.
+    Does not require database access if no token was supplied.
+    """
+    if not token:
+        return None
+
+    db = await get_mongo_db(request)
+    user_repo = UserRepository(db)
+    session_repo = AuthSessionRepository(db)
+
+    return await get_current_user(
+        request=request,
+        token=token,
+        user_repo=user_repo,
+        session_repo=session_repo,
+    )
+
+
+# -------------------------------------------------------------------------
+# AI LLM Service Dependency
+# -------------------------------------------------------------------------
+
+def get_ai_service():
+    """Provides the active LLMService singleton for AI endpoint handlers."""
+    from app.ai.llm_service import get_llm_service
+    return get_llm_service()
+

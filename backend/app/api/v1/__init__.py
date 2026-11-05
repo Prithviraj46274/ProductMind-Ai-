@@ -4,7 +4,7 @@ Aggregates modular endpoint routers into the primary /api/v1 namespace.
 """
 
 from fastapi import APIRouter
-from app.api.v1.endpoints import health, auth
+from app.api.v1.endpoints import health, auth, ai
 
 api_router = APIRouter()
 
@@ -13,3 +13,6 @@ api_router.include_router(health.router)
 
 # Authentication & Session Management
 api_router.include_router(auth.router)
+
+# AI & LLM Foundation Diagnostics
+api_router.include_router(ai.router)
