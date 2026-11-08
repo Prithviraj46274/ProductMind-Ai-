@@ -4,7 +4,7 @@ Matches Mongoose schemas for FeatureGroup, CustomerPersona, and CompetitorIntel.
 """
 
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, Field, ConfigDict
 from bson import ObjectId
 
@@ -33,6 +33,17 @@ class FeatureGroup(BaseMongoModel):
     )
     pain_points: List[str] = Field(default_factory=list, alias="painPoints")
     feedback_count: int = Field(default=0, alias="feedbackCount", ge=0)
+    # AI Feature Intelligence extensions (backward-compatible)
+    feature_summary: Optional[str] = Field(default=None, alias="featureSummary")
+    related_feedback_ids: List[PyObjectId] = Field(default_factory=list, alias="relatedFeedbackIds")
+    common_themes: List[str] = Field(default_factory=list, alias="commonThemes")
+    evidence: List[str] = Field(default_factory=list)
+    suggested_capability: Optional[str] = Field(default=None, alias="suggestedCapability")
+    grouping_confidence: Optional[float] = Field(default=None, alias="groupingConfidence")
+    grouping_reason: Optional[str] = Field(default=None, alias="groupingReason")
+    unique_customer_count: int = Field(default=0, alias="uniqueCustomerCount", ge=0)
+    urgency_distribution: Dict[str, int] = Field(default_factory=dict, alias="urgencyDistribution")
+    ai_metadata: Optional[Dict[str, Any]] = Field(default=None, alias="aiMetadata")
     promoted_feature_id: Optional[PyObjectId] = Field(default=None, alias="promotedFeatureId")
     merged_into_group_id: Optional[PyObjectId] = Field(default=None, alias="mergedIntoGroupId")
     reviewed_by: Optional[PyObjectId] = Field(default=None, alias="reviewedBy")

@@ -59,8 +59,8 @@ async def get_ai_health(
 @router.post(
     "/test",
     status_code=status.HTTP_200_OK,
-    summary="Test Gemini LLM Connectivity",
-    description="Sends a lightweight test prompt to Google Gemini to verify end-to-end model connectivity and latency.",
+    summary="Test AI Model Connectivity",
+    description="Sends a lightweight test prompt to the active AI provider to verify end-to-end model connectivity and latency.",
     response_model=AITestResponse,
 )
 async def test_ai_connectivity(
@@ -69,13 +69,19 @@ async def test_ai_connectivity(
     llm_service: LLMService = Depends(get_llm_service),
 ) -> AITestResponse:
     """
-    Executes a small test generation against Google Gemini.
+    Executes a small test generation against the active AI provider.
     Tracks latency and maps provider errors to sanitized HTTP error responses.
     """
     if not llm_service.is_configured:
+        if llm_service.provider_name == "groq":
+            key_var = "GROQ_API_KEY"
+        elif llm_service.provider_name == "openrouter":
+            key_var = "OPENROUTER_API_KEY"
+        else:
+            key_var = "GOOGLE_API_KEY"
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="AI service is not configured. Set GOOGLE_API_KEY in your environment.",
+            detail=f"AI service is not configured. Set {key_var} in your environment.",
         )
 
     test_payload = payload or AITestRequest()

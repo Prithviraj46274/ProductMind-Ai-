@@ -35,6 +35,8 @@ class AISettings(BaseSettings):
     )
 
     GOOGLE_API_KEY: Optional[str] = Field(default=None, alias="GOOGLE_API_KEY")
+    OPENROUTER_API_KEY: Optional[str] = Field(default=None, alias="OPENROUTER_API_KEY")
+    GROQ_API_KEY: Optional[str] = Field(default=None, alias="GROQ_API_KEY")
     AI_PROVIDER: str = Field(default="google", alias="AI_PROVIDER")
     AI_MODEL: str = Field(default="gemini-3.8-flash", alias="AI_MODEL")
     AI_TEMPERATURE: float = Field(default=0.2, alias="AI_TEMPERATURE", ge=0.0, le=2.0)
@@ -45,7 +47,7 @@ class AISettings(BaseSettings):
     @field_validator("AI_PROVIDER")
     @classmethod
     def validate_provider(cls, v: str) -> str:
-        allowed = {"google"}
+        allowed = {"google", "openrouter", "groq"}
         if v.lower() not in allowed:
             raise ValueError(f"Unsupported AI_PROVIDER '{v}'. Currently supported: {allowed}")
         return v.lower()
@@ -64,6 +66,20 @@ class AISettings(BaseSettings):
             if key.strip().lower() in {"your_google_api_key", "your_api_key", "placeholder"}:
                 return False
             return True
+        elif self.AI_PROVIDER == "openrouter":
+            key = self.OPENROUTER_API_KEY
+            if not key or not key.strip():
+                return False
+            if key.strip().lower() in {"your_openrouter_api_key", "your_api_key", "placeholder"}:
+                return False
+            return True
+        elif self.AI_PROVIDER == "groq":
+            key = self.GROQ_API_KEY
+            if not key or not key.strip():
+                return False
+            if key.strip().lower() in {"your_groq_api_key", "your_api_key", "placeholder"}:
+                return False
+            return True
         return False
 
     def validate_for_execution(self) -> None:
@@ -77,6 +93,18 @@ class AISettings(BaseSettings):
                     "Google Gemini API key is not configured. "
                     "Please set the GOOGLE_API_KEY environment variable in your backend .env file.",
                     provider="google",
+                )
+            elif self.AI_PROVIDER == "openrouter":
+                raise AIConfigurationException(
+                    "OpenRouter API key is not configured. "
+                    "Please set the OPENROUTER_API_KEY environment variable in your backend .env file.",
+                    provider="openrouter",
+                )
+            elif self.AI_PROVIDER == "groq":
+                raise AIConfigurationException(
+                    "Groq API key is not configured. "
+                    "Please set the GROQ_API_KEY environment variable in your backend .env file.",
+                    provider="groq",
                 )
             raise AIConfigurationException(
                 f"Active provider '{self.AI_PROVIDER}' is not configured.",

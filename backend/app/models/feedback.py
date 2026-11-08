@@ -68,3 +68,5 @@ class FeedbackItem(BaseMongoModel):
     classification_confidence: Optional[float] = Field(default=None, alias="classificationConfidence", ge=0.0, le=1.0)
     processing_status: FeedbackProcessingStatus = Field(default=FeedbackProcessingStatus.RAW, alias="processingStatus")
     embedding: Optional[List[float]] = Field(default=None)
+    ai_analysis: Optional[Dict[str, Any]] = Field(default=None, alias="aiAnalysis")
+    analyzed_at: Optional[datetime] = Field(default=None, alias="analyzedAt")

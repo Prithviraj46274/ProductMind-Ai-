@@ -48,7 +48,7 @@ def test_gemini_provider_properties(configured_settings):
 
 def test_gemini_provider_unconfigured_raises_on_get_client():
     """Verify get_chat_model raises AIConfigurationException if unconfigured."""
-    unconfigured = AISettings(GOOGLE_API_KEY=None)
+    unconfigured = AISettings(_env_file=None, AI_PROVIDER="google", GOOGLE_API_KEY=None)
     provider = GeminiProvider(settings=unconfigured)
     with pytest.raises(AIConfigurationException):
         provider.get_chat_model()

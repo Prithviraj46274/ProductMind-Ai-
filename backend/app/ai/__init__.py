@@ -15,6 +15,8 @@ from app.ai.exceptions import (
 )
 from app.ai.providers.base import BaseLLMProvider
 from app.ai.providers.gemini import GeminiProvider
+from app.ai.providers.openrouter import OpenRouterProvider
+from app.ai.providers.groq import GroqProvider
 from app.ai.llm_service import LLMService, get_llm_service, create_llm_service
 from app.ai.schemas import (
     ChatMessageInput,
@@ -28,6 +30,8 @@ __all__ = [
     "AISettings",
     "BaseLLMProvider",
     "GeminiProvider",
+    "OpenRouterProvider",
+    "GroqProvider",
     "LLMService",
     "get_llm_service",
     "create_llm_service",

@@ -4,9 +4,9 @@ Provides reusable, non-duplicating dependencies for MongoDB clients, databases,
 collection registries, domain repositories, and user authentication.
 """
 
-from typing import Type, Optional
+from typing import Type, Optional, Union
 from fastapi import Request, Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 
 from app.core.config import settings
@@ -40,10 +40,15 @@ from app.repositories import (
     SavedReportRepository,
 )
 
-oauth2_scheme = OAuth2PasswordBearer(
-    tokenUrl=f"{settings.API_V1_STR}/auth/login",
+# HTTP Bearer security scheme for Swagger UI & OpenAPI documentation
+http_bearer = HTTPBearer(
     auto_error=False,
+    bearerFormat="JWT",
+    scheme_name="BearerAuth",
+    description="Enter your JWT access token",
 )
+# Backward-compatibility alias
+oauth2_scheme = http_bearer
 
 
 # -------------------------------------------------------------------------
@@ -234,7 +239,7 @@ def get_saved_report_repository(
 
 async def get_current_user(
     request: Request,
-    token: Optional[str] = Depends(oauth2_scheme),
+    token: Optional[Union[HTTPAuthorizationCredentials, str]] = Depends(http_bearer),
     user_repo: UserRepository = Depends(get_user_repository),
     session_repo: AuthSessionRepository = Depends(get_auth_session_repository),
 ) -> User:
@@ -243,7 +248,11 @@ async def get_current_user(
     checks active session in database, and retrieves the authenticated User.
     Raises HTTP 401 Unauthorized for missing, invalid, expired, or revoked tokens.
     """
-    if not token:
+    raw_token: Optional[str] = (
+        token.credentials if isinstance(token, HTTPAuthorizationCredentials) else token
+    )
+
+    if not raw_token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Not authenticated",
@@ -251,7 +260,7 @@ async def get_current_user(
         )
 
     try:
-        payload = decode_token(token)
+        payload = decode_token(raw_token)
     except ExpiredTokenException:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -310,7 +319,7 @@ async def get_current_user(
 
 async def get_optional_current_user(
     request: Request,
-    token: Optional[str] = Depends(oauth2_scheme),
+    token: Optional[Union[HTTPAuthorizationCredentials, str]] = Depends(http_bearer),
 ) -> Optional[User]:
     """
     Extracts and verifies Bearer token if provided.
@@ -318,7 +327,10 @@ async def get_optional_current_user(
     Raises HTTP 401 Unauthorized if a malformed, expired, or revoked token was provided.
     Does not require database access if no token was supplied.
     """
-    if not token:
+    raw_token: Optional[str] = (
+        token.credentials if isinstance(token, HTTPAuthorizationCredentials) else token
+    )
+    if not raw_token:
         return None
 
     db = await get_mongo_db(request)
@@ -327,7 +339,7 @@ async def get_optional_current_user(
 
     return await get_current_user(
         request=request,
-        token=token,
+        token=raw_token,
         user_repo=user_repo,
         session_repo=session_repo,
     )

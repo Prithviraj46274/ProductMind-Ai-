@@ -4,7 +4,7 @@ Tests GET /api/v1/ai/health and POST /api/v1/ai/test with mocked LLM service.
 Guarantees credentials are never exposed and error codes are correctly mapped.
 """
 
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 import pytest
 from fastapi.testclient import TestClient
 
@@ -36,8 +36,8 @@ def test_ai_health_endpoint_success():
     data = response.json()
 
     assert "status" in data
-    assert data["provider"] == "google"
-    assert data["model"] == "gemini-3.8-flash"
+    assert data["provider"] in {"google", "openrouter", "groq"}
+    assert "model" in data
     assert "is_configured" in data
     assert "temperature" in data
     assert "max_output_tokens" in data
@@ -48,6 +48,97 @@ def test_ai_health_endpoint_success():
     assert "api_key" not in str(data).lower()
     assert "key" not in data
     assert "google_api_key" not in data
+    assert "openrouter_api_key" not in data
+    assert "groq_api_key" not in data
+
+
+def test_ai_health_endpoint_groq_mocked():
+    """Verify GET /api/v1/ai/health accurately reports Groq provider state."""
+    mock_service = AsyncMock()
+    mock_service.is_configured = True
+    mock_service.provider_name = "groq"
+    mock_service.model_name = "qwen/qwen3.8-27b"
+    mock_service.settings = MagicMock()
+    mock_service.settings.AI_TEMPERATURE = 1.0
+    mock_service.settings.AI_MAX_OUTPUT_TOKENS = 4096
+    mock_service.settings.AI_TIMEOUT_SECONDS = 60
+    mock_service.settings.AI_MAX_RETRIES = 2
+
+    app.dependency_overrides[get_llm_service] = lambda: mock_service
+
+    response = client.get("/api/v1/ai/health")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["provider"] == "groq"
+    assert data["model"] == "qwen/qwen3.8-27b"
+    assert data["temperature"] == 1.0
+    assert data["status"] == "ready"
+
+
+def test_ai_test_endpoint_groq_success_mocked():
+    """Verify POST /api/v1/ai/test executes successfully when Groq LLM is active."""
+    mock_service = AsyncMock(spec=LLMService)
+    mock_service.is_configured = True
+    mock_service.provider_name = "groq"
+    mock_service.model_name = "qwen/qwen3.8-27b"
+    mock_service.generate_text.return_value = "Hello from Qwen 3.8 27B on Groq!"
+
+    app.dependency_overrides[get_llm_service] = lambda: mock_service
+
+    response = client.post(
+        "/api/v1/ai/test",
+        json={"prompt": "Hi Qwen"},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "success"
+    assert data["provider"] == "groq"
+    assert data["model"] == "qwen/qwen3.8-27b"
+    assert data["response"] == "Hello from Qwen 3.8 27B on Groq!"
+
+
+def test_ai_health_endpoint_openrouter_mocked():
+    """Verify GET /api/v1/ai/health accurately reports OpenRouter provider state."""
+    mock_service = AsyncMock()
+    mock_service.is_configured = True
+    mock_service.provider_name = "openrouter"
+    mock_service.model_name = "google/gemma-4-31b-it:free"
+    mock_service.settings = MagicMock()
+    mock_service.settings.AI_TEMPERATURE = 0.2
+    mock_service.settings.AI_MAX_OUTPUT_TOKENS = 4096
+    mock_service.settings.AI_TIMEOUT_SECONDS = 60
+    mock_service.settings.AI_MAX_RETRIES = 2
+
+    app.dependency_overrides[get_llm_service] = lambda: mock_service
+
+    response = client.get("/api/v1/ai/health")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["provider"] == "openrouter"
+    assert data["model"] == "google/gemma-4-31b-it:free"
+    assert data["status"] == "ready"
+
+
+def test_ai_test_endpoint_openrouter_success_mocked():
+    """Verify POST /api/v1/ai/test executes successfully when OpenRouter LLM is active."""
+    mock_service = AsyncMock(spec=LLMService)
+    mock_service.is_configured = True
+    mock_service.provider_name = "openrouter"
+    mock_service.model_name = "google/gemma-4-31b-it:free"
+    mock_service.generate_text.return_value = "Hello from Gemma 4 31B via OpenRouter!"
+
+    app.dependency_overrides[get_llm_service] = lambda: mock_service
+
+    response = client.post(
+        "/api/v1/ai/test",
+        json={"prompt": "Hi Gemma"},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "success"
+    assert data["provider"] == "openrouter"
+    assert data["model"] == "google/gemma-4-31b-it:free"
+    assert data["response"] == "Hello from Gemma 4 31B via OpenRouter!"
 
 
 def test_ai_test_endpoint_success_mocked():
