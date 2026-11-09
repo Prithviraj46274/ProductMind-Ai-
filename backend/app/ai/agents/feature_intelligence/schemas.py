@@ -120,6 +120,10 @@ class FeatureGroupingAgentOutput(BaseModel):
         default_factory=list,
         description="Consolidated feature groups identified from feedback",
     )
+    feature_groups: Optional[List[FeatureGroupAnalysis]] = Field(
+        default=None,
+        description="Alias for groups",
+    )
     ungrouped_feedback_ids: List[str] = Field(
         default_factory=list,
         description="Feedback IDs that do not belong to any cluster or represent distinct single requests",
@@ -128,6 +132,37 @@ class FeatureGroupingAgentOutput(BaseModel):
         default="",
         description="Synthesis of capability boundaries, cluster separations, and distinction rationales",
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_groups(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            # Unpack single outer wrapper if reasoning model wrapped payload (e.g. {'###': {...}}, {'output': {...}})
+            if len(data) == 1:
+                first_k = next(iter(data))
+                if isinstance(data[first_k], dict) and any(
+                    k in data[first_k]
+                    for k in ("groups", "feature_groups", "Feature_Groups", "FeatureGroups", "clusters")
+                ):
+                    data = data[first_k]
+
+            if "feature_groups" in data and ("groups" not in data or not data["groups"]):
+                data["groups"] = data["feature_groups"]
+            elif "Feature_Groups" in data and ("groups" not in data or not data["groups"]):
+                data["groups"] = data["Feature_Groups"]
+            elif "FeatureGroups" in data and ("groups" not in data or not data["groups"]):
+                data["groups"] = data["FeatureGroups"]
+            elif "clusters" in data and ("groups" not in data or not data["groups"]):
+                data["groups"] = data["clusters"]
+        return data
+
+    @model_validator(mode="after")
+    def sync_groups(self) -> "FeatureGroupingAgentOutput":
+        if self.feature_groups is None and self.groups:
+            self.feature_groups = self.groups
+        elif not self.groups and self.feature_groups:
+            self.groups = self.feature_groups
+        return self
 
 
 class DuplicateDetectionItem(BaseModel):

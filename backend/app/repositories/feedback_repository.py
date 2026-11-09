@@ -7,7 +7,12 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from app.database.collections import Collections
 from app.models.feedback import FeedbackItem, FeedbackBatch
-from app.core.enums import FeedbackCategory, FeedbackSentiment, FeedbackPriority
+from app.core.enums import (
+    FeedbackCategory,
+    FeedbackSentiment,
+    FeedbackPriority,
+    FeedbackProcessingStatus,
+)
 from app.repositories.base import BaseRepository
 
 

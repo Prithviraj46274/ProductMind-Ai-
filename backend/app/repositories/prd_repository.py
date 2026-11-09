@@ -28,3 +28,36 @@ class PRDRepository(BaseRepository[PRD]):
             sort=[("updatedAt", -1)],
         )
 
+    async def find_by_feature_group(
+        self,
+        workspace_id: Any,
+        feature_group_id: Any,
+    ) -> Optional[PRD]:
+        """Finds the most recent PRD created for a specific feature group in a workspace."""
+        ws_oid = self._ensure_object_id(workspace_id)
+        fg_oid = self._ensure_object_id(feature_group_id)
+        doc = await self.collection.find_one(
+            {"workspaceId": ws_oid, "featureGroupId": fg_oid},
+            sort=[("updatedAt", -1)],
+        )
+        return self.model_cls.from_mongo(doc) if doc else None
+
+    async def find_by_workspace_and_filters(
+        self,
+        workspace_id: Any,
+        status: Optional[str] = None,
+        limit: int = 100,
+        skip: int = 0,
+    ) -> List[PRD]:
+        """Retrieves paginated PRDs for a workspace, optionally filtered by status."""
+        filter_query: dict = {}
+        if status:
+            filter_query["status"] = status
+        return await self.find_by_workspace(
+            workspace_id,
+            filter_query=filter_query,
+            sort=[("updatedAt", -1), ("createdAt", -1)],
+            limit=limit,
+            skip=skip,
+        )
+

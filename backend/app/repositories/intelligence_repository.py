@@ -95,3 +95,48 @@ class PrioritizationScenarioRepository(BaseRepository[PrioritizationScenario]):
     def __init__(self, db: AsyncIOMotorDatabase):
         super().__init__(db, Collections.PRIORITIZATION_SCENARIOS, PrioritizationScenario)
 
+    async def find_by_workspace_and_feature_group(
+        self,
+        workspace_id: Any,
+        feature_group_id: Any,
+    ) -> Optional[PrioritizationScenario]:
+        """Finds the most recent active prioritization result for a specific feature group."""
+        ws_oid = self._ensure_object_id(workspace_id)
+        fg_oid = self._ensure_object_id(feature_group_id)
+        doc = await self.collection.find_one({
+            "workspaceId": ws_oid,
+            "featureGroupId": fg_oid,
+            "isActive": True,
+        })
+        return self.model_cls.from_mongo(doc) if doc else None
+
+    async def find_active_by_workspace(
+        self,
+        workspace_id: Any,
+        limit: int = 100,
+        skip: int = 0,
+    ) -> List[PrioritizationScenario]:
+        """Retrieves active prioritization results for a workspace."""
+        return await self.find_by_workspace(
+            workspace_id,
+            filter_query={"isActive": True},
+            sort=[("finalScore", -1), ("createdAt", -1)],
+            limit=limit,
+            skip=skip,
+        )
+
+    async def find_ranked_by_score(
+        self,
+        workspace_id: Any,
+        limit: int = 100,
+        skip: int = 0,
+    ) -> List[PrioritizationScenario]:
+        """Retrieves prioritization results ordered by final numerical score descending."""
+        return await self.find_by_workspace(
+            workspace_id,
+            filter_query={"isActive": True, "finalScore": {"$ne": None}},
+            sort=[("finalScore", -1)],
+            limit=limit,
+            skip=skip,
+        )
+

@@ -103,7 +103,9 @@ class PriorityTier(str, Enum):
 class PRDStatus(str, Enum):
     DRAFT = "Draft"
     IN_REVIEW = "In Review"
+    PENDING_REVIEW = "Pending Review"
     APPROVED = "Approved"
+    REJECTED = "Rejected"
     COMPLETED = "Completed"
     ARCHIVED = "Archived"
 

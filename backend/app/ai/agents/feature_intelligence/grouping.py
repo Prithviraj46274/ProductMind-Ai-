@@ -24,7 +24,10 @@ FEATURE_REQUEST_SYNONYMS = {
     "feature_request",
     "enhancement",
     "request",
+    "feedbackcategory.feature_requests",
+    "feedbackclassificationcategory.feature_request",
 }
+
 
 FEATURE_REQUEST_KEYWORDS = [
     "please add",
@@ -73,19 +76,22 @@ def filter_eligible_feature_requests(
 
         # Check existing AI analysis first
         ai_analysis = data.get("ai_analysis") or data.get("aiAnalysis") or {}
-        ai_category = str(ai_analysis.get("category") or "").strip().lower()
+        ai_cat_raw = ai_analysis.get("category")
+        ai_category = str(getattr(ai_cat_raw, "value", ai_cat_raw) or "").strip().lower()
 
         is_feature_request = False
 
-        if ai_category in FEATURE_REQUEST_SYNONYMS:
+        if ai_category in FEATURE_REQUEST_SYNONYMS or "feature" in ai_category:
             is_feature_request = True
         elif not ai_category:
             # Fallback policy: inspect existing category field
-            category_val = str(data.get("category") or "").strip().lower()
-            if category_val in FEATURE_REQUEST_SYNONYMS:
+            cat_raw = data.get("category")
+            category_val = str(getattr(cat_raw, "value", cat_raw) or "").strip().lower()
+            if category_val in FEATURE_REQUEST_SYNONYMS or "feature" in category_val:
                 is_feature_request = True
             elif any(kw in full_text for kw in FEATURE_REQUEST_KEYWORDS):
                 is_feature_request = True
+
 
         if not is_feature_request:
             continue
@@ -238,6 +244,14 @@ def validate_and_sanitize_groups(
     valid_ids: Set[str] = {c.feedback_id for c in candidates}
     candidate_lookup: Dict[str, FeatureRequestCandidate] = {c.feedback_id: c for c in candidates}
 
+    # Index lookup for candidate positional references (e.g. "Candidate #1", "#1", "1")
+    index_lookup: Dict[str, str] = {}
+    for idx, c in enumerate(candidates, 1):
+        index_lookup[str(idx)] = c.feedback_id
+        index_lookup[f"#{idx}"] = c.feedback_id
+        index_lookup[f"candidate #{idx}".lower()] = c.feedback_id
+        index_lookup[f"candidate {idx}".lower()] = c.feedback_id
+
     sanitized_groups: List[FeatureGroupAnalysis] = []
     assigned_ids: Set[str] = set()
 
@@ -250,8 +264,9 @@ def validate_and_sanitize_groups(
         clean_fids: List[str] = []
         for fid in group.related_feedback_ids:
             clean_id = str(fid).strip()
-            if clean_id in valid_ids and clean_id not in assigned_ids:
-                clean_fids.append(clean_id)
+            resolved_id = clean_id if clean_id in valid_ids else index_lookup.get(clean_id.lower())
+            if resolved_id and resolved_id in valid_ids and resolved_id not in assigned_ids:
+                clean_fids.append(resolved_id)
 
         # Check minimum group size requirement
         if len(clean_fids) < min_group_size:

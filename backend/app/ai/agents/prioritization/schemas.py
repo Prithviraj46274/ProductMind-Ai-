@@ -1,0 +1,308 @@
+"""
+ProductMind AI — Prioritization Agent Schemas
+Defines strict Pydantic v2 schemas, scoring configuration, factor assessments,
+analytics interfaces, and API contracts for evidence-based feature prioritization.
+"""
+
+from datetime import datetime
+from enum import Enum
+from typing import Any, Dict, List, Optional
+from pydantic import BaseModel, Field, field_validator, model_validator
+
+
+class PriorityLevel(str, Enum):
+    CRITICAL = "Critical"
+    HIGH = "High"
+    MEDIUM = "Medium"
+    LOW = "Low"
+
+
+class FactorName(str, Enum):
+    CUSTOMER_DEMAND = "customer_demand"
+    URGENCY = "urgency"
+    BUSINESS_IMPACT = "business_impact"
+    STRATEGIC_ALIGNMENT = "strategic_alignment"
+    SENTIMENT = "sentiment"
+    USAGE_IMPACT = "usage_impact"
+
+
+class FactorWeightConfig(BaseModel):
+    """
+    Configurable factor weights for the Prioritization Engine.
+    Defaults to the standard framework:
+    - Customer Demand: 25% (0.25)
+    - Urgency: 20% (0.20)
+    - Business Impact: 20% (0.20)
+    - Strategic Alignment: 15% (0.15)
+    - Sentiment: 10% (0.10)
+    - Usage Impact: 10% (0.10)
+    Total = 1.0 (100%).
+    """
+    customer_demand: float = Field(default=0.25, ge=0.0, le=1.0)
+    urgency: float = Field(default=0.20, ge=0.0, le=1.0)
+    business_impact: float = Field(default=0.20, ge=0.0, le=1.0)
+    strategic_alignment: float = Field(default=0.15, ge=0.0, le=1.0)
+    sentiment: float = Field(default=0.10, ge=0.0, le=1.0)
+    usage_impact: float = Field(default=0.10, ge=0.0, le=1.0)
+
+    @model_validator(mode="after")
+    def validate_total_weight(self) -> "FactorWeightConfig":
+        total = sum([
+            self.customer_demand,
+            self.urgency,
+            self.business_impact,
+            self.strategic_alignment,
+            self.sentiment,
+            self.usage_impact,
+        ])
+        if not (0.98 <= total <= 1.02):
+            raise ValueError(f"Total factor weights must sum to approximately 1.0 (got {round(total, 4)})")
+        return self
+
+
+class ThresholdConfig(BaseModel):
+    """Configurable numerical score thresholds for priority classification."""
+    critical_min: float = Field(default=80.0, ge=0.0, le=100.0)
+    high_min: float = Field(default=60.0, ge=0.0, le=100.0)
+    medium_min: float = Field(default=40.0, ge=0.0, le=100.0)
+
+    @model_validator(mode="after")
+    def validate_hierarchy(self) -> "ThresholdConfig":
+        if not (self.critical_min > self.high_min > self.medium_min):
+            raise ValueError("Thresholds must follow strict descending order: critical_min > high_min > medium_min")
+        return self
+
+
+class ProductAnalyticsData(BaseModel):
+    """Product analytics signals for usage impact scoring."""
+    feature_usage_frequency: Optional[float] = Field(default=None, description="Average daily/weekly usage events")
+    active_users: Optional[int] = Field(default=None, description="Count of distinct active users interacting with related module")
+    adoption_rate: Optional[float] = Field(default=None, ge=0.0, le=100.0, description="Percentage feature adoption")
+    drop_off_rate: Optional[float] = Field(default=None, ge=0.0, le=100.0, description="Funnel step abandonment rate")
+    user_engagement_score: Optional[float] = Field(default=None, ge=0.0, le=100.0, description="Normalized engagement index")
+    trend_direction: Optional[str] = Field(default=None, description="Usage trend: increasing, stable, decreasing")
+    is_available: bool = Field(default=False, description="Whether verified analytics telemetry is present")
+
+
+class StrategicContext(BaseModel):
+    """Optional strategic context and corporate OKRs provided for evaluation."""
+    company_stage: Optional[str] = Field(default=None, description="E.g. Early Growth, Scaleup, Enterprise Expansion")
+    primary_business_goals: List[str] = Field(
+        default_factory=list,
+        description="Core priorities (e.g. 'Reduce customer churn', 'Expand enterprise tier', 'Improve daily engagement')",
+    )
+    target_customer_segments: List[str] = Field(default_factory=list, description="Target customer segments")
+    current_quarter_okrs: List[str] = Field(default_factory=list, description="Active quarter OKRs")
+
+
+class FactorAssessment(BaseModel):
+    """Itemized evaluation of a single prioritization factor."""
+    factor_name: str = Field(..., description="Factor identifier")
+    score: float = Field(..., ge=0.0, le=100.0, description="Normalized factor score from 0.0 to 100.0")
+    explanation: str = Field(..., min_length=5, description="Detailed evidence-grounded justification")
+    supporting_evidence: List[str] = Field(default_factory=list, description="Verbatim customer statements or metrics")
+    evidence_source: str = Field(default="feedback", description="Source of evidence: feedback, analytics, strategy")
+    confidence: float = Field(default=0.8, ge=0.0, le=1.0, description="Confidence in assessment")
+
+
+class PrioritizationAgentOutput(BaseModel):
+    """
+    Structured qualitative evaluation generated by the LLM.
+    The LLM evaluates qualitative factors (business impact, strategic alignment, pain points)
+    and extracts evidence, but NEVER calculates the final composite numerical score.
+    """
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_keys(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            key_map = {
+                "FeatureGroupID": "feature_group_id",
+                "FeatureGroupId": "feature_group_id",
+                "featureGroupId": "feature_group_id",
+                "id": "feature_group_id",
+                "BusinessImpactScore": "business_impact_score",
+                "businessImpactScore": "business_impact_score",
+                "BusinessImpactExplanation": "business_impact_explanation",
+                "businessImpactExplanation": "business_impact_explanation",
+                "StrategicAlignmentScore": "strategic_alignment_score",
+                "strategicAlignmentScore": "strategic_alignment_score",
+                "StrategicAlignmentExplanation": "strategic_alignment_explanation",
+                "strategicAlignmentExplanation": "strategic_alignment_explanation",
+                "CustomerPainPointSeverity": "customer_pain_point_severity",
+                "customerPainPointSeverity": "customer_pain_point_severity",
+                "ProductOpportunity": "product_opportunity",
+                "productOpportunity": "product_opportunity",
+                "ImplementationBenefits": "implementation_benefits",
+                "implementationBenefits": "implementation_benefits",
+                "DelayRisks": "delay_risks",
+                "delayRisks": "delay_risks",
+                "SupportingEvidence": "supporting_evidence",
+                "supportingEvidence": "supporting_evidence",
+                "Reasoning": "reasoning",
+            }
+            for old_k, new_k in key_map.items():
+                if old_k in data and (new_k not in data or data[new_k] is None):
+                    data[new_k] = data[old_k]
+        return data
+
+    feature_group_id: str = Field(..., description="Target feature group identifier")
+    business_impact_score: float = Field(
+        ...,
+        ge=0.0,
+        le=100.0,
+        description="Estimated potential business impact on a 0-100 scale based on revenue, retention, and market opportunity",
+    )
+    business_impact_explanation: str = Field(
+        ...,
+        min_length=10,
+        description="Grounded explanation of business impact potential",
+    )
+    strategic_alignment_score: float = Field(
+        ...,
+        ge=0.0,
+        le=100.0,
+        description="Estimated strategic alignment on a 0-100 scale with product vision and business goals",
+    )
+    strategic_alignment_explanation: str = Field(
+        ...,
+        min_length=10,
+        description="Grounded explanation of strategic alignment",
+    )
+    customer_pain_point_severity: str = Field(
+        ...,
+        min_length=5,
+        description="Synthesis of user pain point intensity, friction, and workflow disruption",
+    )
+    product_opportunity: str = Field(
+        default="",
+        description="Product capability, differentiation, or workflow advantage unlocked by this feature",
+    )
+    implementation_benefits: List[str] = Field(
+        ...,
+        min_length=1,
+        description="Concrete, tangible product and customer benefits of implementing now",
+    )
+    delay_risks: List[str] = Field(
+        ...,
+        min_length=1,
+        description="Specific risks, churn threats, or operational bottlenecks if implementation is delayed",
+    )
+    supporting_evidence: List[str] = Field(
+        default_factory=list,
+        description="Grounded customer quotes or excerpts supporting the evaluation",
+    )
+    reasoning: str = Field(
+        ...,
+        min_length=10,
+        description="Comprehensive executive synthesis justifying the evaluation",
+    )
+
+
+class PrioritizationResult(BaseModel):
+    """
+    Complete consolidated prioritization result.
+    Synthesizes LLM qualitative assessments with deterministic Python-calculated scores,
+    normalized factor weights, coverage percentage, and priority level.
+    """
+    result_id: str = Field(..., description="Prioritization record identifier")
+    workspace_id: str = Field(..., description="Associated workspace identifier")
+    feature_group_id: str = Field(..., description="Target feature group identifier")
+    group_name: str = Field(..., description="Feature group title")
+    final_score: float = Field(..., ge=0.0, le=100.0, description="Deterministically calculated final composite score")
+    priority_level: PriorityLevel = Field(..., description="Priority classification: Critical, High, Medium, Low")
+    factor_scores: Dict[str, float] = Field(default_factory=dict, description="Normalized score (0-100) per factor")
+    factor_weights: Dict[str, float] = Field(default_factory=dict, description="Effective normalized weights applied")
+    coverage_percentage: float = Field(
+        ...,
+        ge=0.0,
+        le=100.0,
+        description="Percentage of factor weight covered by verified available data",
+    )
+    explanation: str = Field(..., description="Transparent breakdown and justification for the priority score")
+    customer_pain_point_severity: str = Field(default="", description="Pain point severity evaluation")
+    implementation_benefits: List[str] = Field(default_factory=list, description="Key benefits of implementation")
+    delay_risks: List[str] = Field(default_factory=list, description="Risks incurred by delaying implementation")
+    supporting_evidence: List[str] = Field(default_factory=list, description="Direct customer quotes and metrics")
+    missing_data: List[str] = Field(default_factory=list, description="Explicit list of unmeasured/unavailable signals")
+    recommendation: str = Field(..., description="Actionable recommendation for product roadmap scheduling")
+    agent_metadata: Dict[str, Any] = Field(default_factory=dict, description="Execution telemetry and runtime stats")
+    created_at: Optional[datetime] = Field(default=None, description="Creation timestamp")
+    updated_at: Optional[datetime] = Field(default=None, description="Last update timestamp")
+
+
+# -------------------------------------------------------------------------
+# API Request & Response Contracts
+# -------------------------------------------------------------------------
+
+class AnalyzePrioritizationRequest(BaseModel):
+    """Request payload to prioritize one or more feature groups."""
+    model_config = {"extra": "ignore"}
+
+    workspace_id: str = Field(..., min_length=1, description="Target workspace identifier")
+    feature_group_ids: Optional[List[str]] = Field(
+        default=None,
+        description="Optional list of feature group IDs to evaluate. If omitted, prioritizes all active feature groups in workspace.",
+    )
+    strategic_context: Optional[StrategicContext] = Field(
+        default=None,
+        description="Optional strategic goals, business priorities, or OKRs",
+    )
+    strategic_alignment_context: Optional[str] = Field(
+        default=None,
+        description="Optional text context for strategic alignment",
+    )
+    weight_config: Optional[FactorWeightConfig] = Field(
+        default=None,
+        description="Optional custom factor weights",
+    )
+    threshold_config: Optional[ThresholdConfig] = Field(
+        default=None,
+        description="Optional custom classification thresholds",
+    )
+    analytics_data: Optional[Dict[str, ProductAnalyticsData]] = Field(
+        default=None,
+        description="Optional dictionary mapping feature_group_id to verified product analytics signals",
+    )
+    usage_analytics_evidence: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Optional verified usage analytics evidence dictionary",
+    )
+    force_reanalyze: bool = Field(
+        default=False,
+        description="If True, re-evaluates feature groups even if existing prioritization results are stored",
+    )
+    force_recalculate: bool = Field(
+        default=False,
+        description="Alias for force_reanalyze",
+    )
+
+
+class AnalyzePrioritizationResponse(BaseModel):
+    """Response contract returning prioritized feature group recommendations."""
+    workspace_id: str = Field(..., description="Workspace ID")
+    total_evaluated: int = Field(..., ge=0, description="Total feature groups evaluated")
+    results: List[PrioritizationResult] = Field(default_factory=list, description="Prioritization results per feature group")
+    execution_metadata: Dict[str, Any] = Field(default_factory=dict, description="Execution metadata and timings")
+
+
+class RankPrioritizationRequest(BaseModel):
+    """Request payload to rank feature groups by prioritization score."""
+    workspace_id: str = Field(..., min_length=1, description="Target workspace identifier")
+    feature_group_ids: Optional[List[str]] = Field(
+        default=None,
+        description="Optional subset of feature group IDs to rank",
+    )
+    top_k: Optional[int] = Field(default=None, ge=1, description="Limit ranking to top K features")
+    min_priority: Optional[PriorityLevel] = Field(
+        default=None,
+        description="Filter ranking to features at or above a minimum priority level",
+    )
+
+
+class RankPrioritizationResponse(BaseModel):
+    """Response contract returning ranked feature groups."""
+    workspace_id: str = Field(..., description="Workspace ID")
+    total_ranked: int = Field(..., ge=0, description="Total feature groups ranked")
+    ranked_results: List[PrioritizationResult] = Field(default_factory=list, description="Feature groups ordered by priority score descending")
+    summary: str = Field(default="", description="Executive summary of ranking distribution")
+

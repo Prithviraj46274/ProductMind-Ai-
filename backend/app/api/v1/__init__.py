@@ -4,7 +4,16 @@ Aggregates modular endpoint routers into the primary /api/v1 namespace.
 """
 
 from fastapi import APIRouter
-from app.api.v1.endpoints import health, auth, ai, feedback_ai, feature_ai
+from app.api.v1.endpoints import (
+    health,
+    auth,
+    ai,
+    feedback_ai,
+    feature_ai,
+    prioritization_ai,
+    planning_ai,
+    orchestrator_ai,
+)
 
 api_router = APIRouter()
 
@@ -22,3 +31,15 @@ api_router.include_router(feedback_ai.router)
 
 # AI Feature Intelligence Specialist Agent
 api_router.include_router(feature_ai.router)
+
+# AI Prioritization Specialist Agent
+api_router.include_router(prioritization_ai.router)
+
+# AI Product Planning Specialist Agent
+api_router.include_router(planning_ai.router)
+
+# Central AI Orchestrator (available at /api/v1/ai/orchestrator and /api/v1/orchestrator)
+api_router.include_router(orchestrator_ai.router)
+api_router.include_router(orchestrator_ai.alias_router)
+
+
