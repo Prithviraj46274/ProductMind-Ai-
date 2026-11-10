@@ -21,7 +21,29 @@ This document provides an honest, precise account of the database engineering de
 
 ---
 
-## 2. Detailed Collection & Module Inventory
+## 2. Current Workspace Management API
+
+Phase 4 Step 9 adds authenticated workspace and membership endpoints under `/api/v1/workspaces`:
+
+| Method | Route | Permission |
+|---|---|---|
+| `POST` | `/workspaces` | Authenticated user; creates a Starter workspace and active owner membership |
+| `GET` | `/workspaces` | Authenticated user; returns only owned or active-member workspaces |
+| `GET` | `/workspaces/{workspace_id}` | Active workspace member or owner |
+| `PATCH` | `/workspaces/{workspace_id}` | Workspace owner or active workspace admin |
+| `GET` | `/workspaces/{workspace_id}/members` | Active workspace member or owner; returns safe profile fields |
+| `POST` | `/workspaces/{workspace_id}/members` | Workspace owner or active workspace admin; adds an existing active user |
+| `PATCH` | `/workspaces/{workspace_id}/members/{user_id}` | Workspace owner or active workspace admin, with admin-role changes restricted to owner |
+| `DELETE` | `/workspaces/{workspace_id}/members/{user_id}` | Workspace owner or active workspace admin; deactivates membership |
+| `DELETE` | `/workspaces/{workspace_id}/members/me` | Active member leaving the workspace |
+
+Workspace owners and active workspace admins can update workspace settings and manage members; active members can read workspace details and member lists. Membership removal is a soft deactivation, and the `ownerId` field remains authoritative because the existing role enum has no separate owner role. Owner removal or demotion is rejected; ownership transfer is not implemented.
+
+The API uses existing workspace, membership, user, and audit-log collections. It does not expose plan changes, archive operations, user credentials, or member email addresses. Membership changes are recorded using the existing workspace audit entity.
+
+---
+
+## 3. Detailed Collection & Module Inventory
 
 | Module | Collection Name | Mongoose Model | Implementation Status | Verified Record Count | Notes & Scope Boundary |
 |---|---|---|---|---|---|
@@ -51,7 +73,7 @@ This document provides an honest, precise account of the database engineering de
 
 ---
 
-## 3. Scope Boundaries & Next Phase Readiness
+## 4. Scope Boundaries & Next Phase Readiness
 
 ### What Has Been Completed in This Task
 1. Comprehensive audit of all frontend pages, mock data, local storage keys, and API contracts.
@@ -68,8 +90,8 @@ This document provides an honest, precise account of the database engineering de
 12. All records inspected directly in MongoDB and ready for inspection via MongoDB Compass or MongoDB Atlas.
 
 ### What Remains for Subsequent Backend Phases
-1. **REST API Controllers & Routers**: Express.js or Fastify route handlers executing queries against these models.
-2. **Authentication Middleware**: JWT issuance, passport / bcrypt verification middleware, and workspace membership authorization checks.
+1. **Remaining REST API Controllers & Routers**: General business APIs, feedback ingestion, and analytics endpoints beyond the workspace and existing AI-specific routes.
+2. **Authorization Coverage**: Apply centralized workspace and role checks to every remaining domain API; JWT/session authentication and workspace-scoped checks for existing AI routes are already present.
 3. **ETL File Ingestion Pipeline**: Server-side RFC4180 streaming CSV / JSON parser writing directly to `feedback_batches` and `feedback_items`.
 4. **Daily Analytics Cron Worker**: Scheduled nightly job calculating `analytics_daily_rollups` from `analytics_events`.
 5. **Generative AI & LLM Service**: Real integration with Gemini / OpenAI API for PRD text generation and Copilot conversational responses.

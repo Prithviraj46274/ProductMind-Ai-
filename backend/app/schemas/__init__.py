@@ -11,7 +11,15 @@ from app.schemas.auth import (
     TokenRefreshResponse,
     MessageResponse,
 )
-from app.schemas.workspace import WorkspaceCreate, WorkspaceUpdate, WorkspaceResponse, WorkspaceSettingsDTO
+from app.schemas.workspace import (
+    WorkspaceCreate,
+    WorkspaceMemberAdd,
+    WorkspaceMemberResponse,
+    WorkspaceMemberRoleUpdate,
+    WorkspaceResponse,
+    WorkspaceSettingsDTO,
+    WorkspaceUpdate,
+)
 from app.schemas.feedback import FeedbackItemCreate, FeedbackItemUpdate, FeedbackItemResponse
 from app.schemas.feature import FeatureCreate, FeatureUpdate, FeatureResponse
 from app.schemas.analytics import AnalyticsDailyRollupResponse, AnalyticsEventCreate
@@ -33,6 +41,9 @@ __all__ = [
     "WorkspaceUpdate",
     "WorkspaceResponse",
     "WorkspaceSettingsDTO",
+    "WorkspaceMemberAdd",
+    "WorkspaceMemberRoleUpdate",
+    "WorkspaceMemberResponse",
     "FeedbackItemCreate",
     "FeedbackItemUpdate",
     "FeedbackItemResponse",
@@ -54,4 +65,3 @@ __all__ = [
     "AuditLogCreate",
     "AuditLogResponse",
 ]
-

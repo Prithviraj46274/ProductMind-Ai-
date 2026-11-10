@@ -7,6 +7,7 @@ from fastapi import APIRouter
 from app.api.v1.endpoints import (
     health,
     auth,
+    workspaces,
     ai,
     feedback_ai,
     feature_ai,
@@ -22,6 +23,9 @@ api_router.include_router(health.router)
 
 # Authentication & Session Management
 api_router.include_router(auth.router)
+
+# Workspace Management
+api_router.include_router(workspaces.router)
 
 # AI & LLM Foundation Diagnostics
 api_router.include_router(ai.router)
@@ -41,5 +45,4 @@ api_router.include_router(planning_ai.router)
 # Central AI Orchestrator (available at /api/v1/ai/orchestrator and /api/v1/orchestrator)
 api_router.include_router(orchestrator_ai.router)
 api_router.include_router(orchestrator_ai.alias_router)
-
 

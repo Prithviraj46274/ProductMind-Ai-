@@ -27,3 +27,24 @@ class WorkspaceRepository(BaseRepository[Workspace]):
         docs = await cursor.to_list(length=100)
         return [Workspace.from_mongo(d) for d in docs]
 
+    async def find_accessible(
+        self,
+        user_id: Any,
+        member_workspace_ids: List[Any],
+        skip: int = 0,
+        limit: int = 100,
+    ) -> List[Workspace]:
+        owner_oid = self._ensure_object_id(user_id)
+        member_ids = [self._ensure_object_id(workspace_id) for workspace_id in member_workspace_ids]
+        access_conditions: List[dict] = [{"ownerId": owner_oid}]
+        if member_ids:
+            access_conditions.append({"_id": {"$in": member_ids}})
+
+        cursor = self.collection.find(
+            {
+                "isArchived": False,
+                "$or": access_conditions,
+            }
+        ).sort("createdAt", -1).skip(skip).limit(limit)
+        docs = await cursor.to_list(length=limit)
+        return [Workspace.from_mongo(doc) for doc in docs]
