@@ -60,7 +60,24 @@ Batch rows require a stable `externalId` or `id`. The source-scoped unique index
 
 Feedback creation preserves AI-owned fields by leaving them at their model defaults. `linkedFeatureId` and `promotedFeatureId` are accepted as input names for the existing `promotedFeatureId` field, and a referenced feature must belong to the same workspace. Feedback edit/delete routes, frontend wiring, multipart CSV upload, AI-agent changes, and database migrations are outside this step.
 
-## 4. Detailed Collection & Module Inventory
+## 4. Current Product Analytics API (Phase 4 Step 11)
+
+The authenticated analytics API is mounted at `/api/v1/analytics`; all routes require a `workspaceId` and accessible workspace. Single-event ingestion and JSON batches require stable event IDs, timezone-aware RFC3339 timestamps, and UTC-derived dates. Batch imports accept 1–500 rows, report accepted/duplicate/rejected outcomes, and support atomic retries restricted to originally rejected row numbers and event IDs.
+
+| Method | Route | Behavior |
+|---|---|---|
+| `POST` | `/analytics/events?workspaceId=...` | Ingests one event; identical event ID/content is idempotent and conflicting reuse returns `409` |
+| `POST` | `/analytics/datasets/upload?workspaceId=...` | Synchronously ingests a bounded JSON batch |
+| `GET` | `/analytics/datasets/{batch_id}?workspaceId=...` | Returns workspace-scoped batch status and row errors |
+| `POST` | `/analytics/datasets/{batch_id}/retry?workspaceId=...` | Atomically claims and retries only rejected rows with their original event IDs |
+| `GET` | `/analytics/overview` | Measured event, identity, duration, coverage, and freshness metrics |
+| `GET` | `/analytics/usage-trends` | Workspace/date-filtered daily ingested rollups |
+| `GET` | `/analytics/features` | Workspace/date-filtered feature usage with pagination |
+| `GET` | `/analytics/funnel` | Explicitly unavailable until funnel semantics are defined |
+
+Daily aggregates are stored in additive `ingestedMetrics`, leaving seeded top-level sample values untouched. The API does not infer users, sessions, features, event times, or custom properties. Event duration is not presented as session duration; account and funnel metrics are unavailable. Because the existing raw-event TTL is 90 days, longer-range distinct user/session counts are withheld when raw-event coverage is incomplete. See [analytics-contract.md](./analytics-contract.md) for request examples, formulas, range rules, and coverage interpretation. No frontend or live database changes were made.
+
+## 5. Detailed Collection & Module Inventory
 
 | Module | Collection Name | Mongoose Model | Implementation Status | Verified Record Count | Notes & Scope Boundary |
 |---|---|---|---|---|---|
@@ -108,8 +125,8 @@ Feedback creation preserves AI-owned fields by leaving them at their model defau
 
 ### What Remains for Subsequent Backend Phases
 1. **Remaining REST API Controllers & Routers**: General business APIs, feedback ingestion, and analytics endpoints beyond the workspace and existing AI-specific routes.
-2. **Authorization Coverage**: Apply centralized workspace and role checks to every remaining domain API; JWT/session authentication and workspace-scoped checks for existing AI routes are already present.
-3. **ETL File Ingestion Pipeline**: Server-side RFC4180 streaming CSV / JSON parser writing directly to `feedback_batches` and `feedback_items`.
-4. **Daily Analytics Cron Worker**: Scheduled nightly job calculating `analytics_daily_rollups` from `analytics_events`.
+2. **Authorization Coverage**: Apply centralized workspace and role checks to remaining domain APIs; analytics, feedback, and workspace routes now include scoped checks.
+3. **ETL File Ingestion Pipeline**: Server-side RFC4180 streaming CSV support and any additional ingestion workflows outside the bounded JSON analytics and feedback APIs.
+4. **Daily Analytics Cron Worker**: Scheduled nightly refresh of `analytics_daily_rollups`; accepted analytics events currently refresh affected ingested daily aggregates synchronously.
 5. **Generative AI & LLM Service**: Real integration with Gemini / OpenAI API for PRD text generation and Copilot conversational responses.
 6. **Atlas Vector Search Index Configuration**: Creating vector search index definitions in MongoDB Atlas if deployed in a cloud environment.
