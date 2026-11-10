@@ -2,8 +2,10 @@
 ProductMind AI — Feedback Repository
 """
 
-from typing import Optional, List, Dict, Any
+from datetime import datetime, timezone
+from typing import Optional, List, Dict, Any, Tuple
 from motor.motor_asyncio import AsyncIOMotorDatabase
+from pymongo import ReturnDocument
 
 from app.database.collections import Collections
 from app.models.feedback import FeedbackItem, FeedbackBatch
@@ -19,6 +21,100 @@ from app.repositories.base import BaseRepository
 class FeedbackRepository(BaseRepository[FeedbackItem]):
     def __init__(self, db: AsyncIOMotorDatabase):
         super().__init__(db, Collections.FEEDBACK_ITEMS, FeedbackItem)
+
+    async def find_by_external_id(
+        self,
+        workspace_id: Any,
+        source_type: Any,
+        external_id: str,
+    ) -> Optional[FeedbackItem]:
+        ws_oid = self._ensure_object_id(workspace_id)
+        source_value = source_type.value if hasattr(source_type, "value") else source_type
+        doc = await self.collection.find_one(
+            {
+                "workspaceId": ws_oid,
+                "sourceType": source_value,
+                "externalId": external_id,
+            }
+        )
+        return FeedbackItem.from_mongo(doc) if doc else None
+
+    async def find_page(
+        self,
+        workspace_id: Any,
+        *,
+        page: int,
+        limit: int,
+        search: Optional[str] = None,
+        category: Optional[FeedbackCategory] = None,
+        sentiment: Optional[FeedbackSentiment] = None,
+        priority: Optional[FeedbackPriority] = None,
+        linked: Optional[bool] = None,
+        sort: str = "newest",
+    ) -> Tuple[List[FeedbackItem], int]:
+        ws_oid = self._ensure_object_id(workspace_id)
+        query: Dict[str, Any] = {"workspaceId": ws_oid}
+        if search:
+            query["$text"] = {"$search": search}
+        if category is not None:
+            query["category"] = category.value
+        if sentiment is not None:
+            query["sentiment"] = sentiment.value
+        if priority is not None:
+            query["sourcePriority"] = priority.value
+        if linked is True:
+            query["promotedFeatureId"] = {"$exists": True, "$ne": None}
+        elif linked is False:
+            query["$or"] = [
+                {"promotedFeatureId": None},
+                {"promotedFeatureId": {"$exists": False}},
+            ]
+
+        total = await self.collection.count_documents(query)
+        skip = (page - 1) * limit
+
+        if sort == "priority":
+            priority_rank = {
+                "Urgent": 0,
+                "High": 1,
+                "Medium": 2,
+                "Low": 3,
+            }
+            pipeline = [
+                {"$match": query},
+                {
+                    "$addFields": {
+                        "_sourcePriorityRank": {
+                            "$switch": {
+                                "branches": [
+                                    {
+                                        "case": {"$eq": ["$sourcePriority", value]},
+                                        "then": rank,
+                                    }
+                                    for value, rank in priority_rank.items()
+                                ],
+                                "default": 4,
+                            }
+                        }
+                    }
+                },
+                {"$sort": {"_sourcePriorityRank": 1, "feedbackDate": -1, "_id": -1}},
+                {"$skip": skip},
+                {"$limit": limit},
+                {"$project": {"_sourcePriorityRank": 0}},
+            ]
+            docs = await self.collection.aggregate(pipeline).to_list(length=limit)
+        else:
+            sort_order = -1 if sort == "newest" else 1
+            cursor = (
+                self.collection.find(query)
+                .sort([("feedbackDate", sort_order), ("_id", sort_order)])
+                .skip(skip)
+                .limit(limit)
+            )
+            docs = await cursor.to_list(length=limit)
+
+        return [FeedbackItem.from_mongo(doc) for doc in docs], total
 
     async def find_by_batch(self, workspace_id: Any, batch_id: Any) -> List[FeedbackItem]:
         b_oid = self._ensure_object_id(batch_id)
@@ -153,3 +249,33 @@ class FeedbackBatchRepository(BaseRepository[FeedbackBatch]):
     def __init__(self, db: AsyncIOMotorDatabase):
         super().__init__(db, Collections.FEEDBACK_BATCHES, FeedbackBatch)
 
+    async def find_by_workspace_and_id(
+        self,
+        batch_id: Any,
+        workspace_id: Any,
+    ) -> Optional[FeedbackBatch]:
+        return await self.find_by_id(batch_id, workspace_id=workspace_id)
+
+    async def claim_failed_batch(
+        self,
+        batch_id: Any,
+        workspace_id: Any,
+    ) -> Optional[FeedbackBatch]:
+        batch_oid = self._ensure_object_id(batch_id)
+        workspace_oid = self._ensure_object_id(workspace_id)
+        doc = await self.collection.find_one_and_update(
+            {
+                "_id": batch_oid,
+                "workspaceId": workspace_oid,
+                "status": {"$in": ["partial", "failed"]},
+                "rejectedRows": {"$gt": 0},
+            },
+            {
+                "$set": {
+                    "status": "processing",
+                    "updatedAt": datetime.now(timezone.utc),
+                }
+            },
+            return_document=ReturnDocument.BEFORE,
+        )
+        return FeedbackBatch.from_mongo(doc) if doc else None

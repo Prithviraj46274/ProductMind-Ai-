@@ -43,7 +43,24 @@ The API uses existing workspace, membership, user, and audit-log collections. It
 
 ---
 
-## 3. Detailed Collection & Module Inventory
+## 3. Current Feedback API (Phase 4 Step 10)
+
+The authenticated feedback API is mounted at `/api/v1/feedback`. List, create, batch-ingest, and batch-status requests require a `workspaceId` query parameter and active workspace membership (or workspace ownership/platform-admin access). Feedback detail derives its workspace from the stored item. Workspace access failures are returned as not found to avoid disclosing tenant data.
+
+| Method | Route | Behavior |
+|---|---|---|
+| `GET` | `/feedback?workspaceId=...` | Workspace-scoped, paginated list (maximum 100 per page), with text search, category, sentiment, source-priority, linked-feature, and sort filters |
+| `POST` | `/feedback?workspaceId=...` | Creates a manual feedback item; requires `externalId` or an `Idempotency-Key` header |
+| `GET` | `/feedback/{feedback_id}` | Retrieves an item only after checking access to its owning workspace |
+| `POST` | `/feedback/batch?workspaceId=...` | Accepts JSON `{ "items": [...] }` with 1–500 rows and returns accepted, duplicate, or rejected outcomes per row |
+| `GET` | `/feedback/batch/{batch_id}?workspaceId=...` | Returns workspace-scoped batch counts and bounded row-error samples |
+| `POST` | `/feedback/batch/{batch_id}/retry?workspaceId=...` | Retries only previously rejected rows, identified by their original `rowNumber` |
+
+Batch rows require a stable `externalId` or `id`. The source-scoped unique index is used for idempotency; identical retries are reported as duplicates, while reuse of an identifier for different source content is rejected. Clients can retry only failed rows through the retry route using the same stable identifiers. Retry claims are atomic, and accepted items retain the original batch ID. No fuzzy/text-similarity deduplication is performed. Row errors omit submitted values and are bounded by the existing `FeedbackBatch.errorSummary` field.
+
+Feedback creation preserves AI-owned fields by leaving them at their model defaults. `linkedFeatureId` and `promotedFeatureId` are accepted as input names for the existing `promotedFeatureId` field, and a referenced feature must belong to the same workspace. Feedback edit/delete routes, frontend wiring, multipart CSV upload, AI-agent changes, and database migrations are outside this step.
+
+## 4. Detailed Collection & Module Inventory
 
 | Module | Collection Name | Mongoose Model | Implementation Status | Verified Record Count | Notes & Scope Boundary |
 |---|---|---|---|---|---|
@@ -73,7 +90,7 @@ The API uses existing workspace, membership, user, and audit-log collections. It
 
 ---
 
-## 4. Scope Boundaries & Next Phase Readiness
+## 5. Scope Boundaries & Next Phase Readiness
 
 ### What Has Been Completed in This Task
 1. Comprehensive audit of all frontend pages, mock data, local storage keys, and API contracts.

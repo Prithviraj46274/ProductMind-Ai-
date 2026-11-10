@@ -57,13 +57,16 @@ This document provides a comprehensive mapping between every frontend page, UI c
   - Sentiment badges (color-coded)
   - Duplicate detection matches (Jaccard similarity score)
   - Smart tag suggestions
-- **Future API Operations**:
-  - `GET /api/v1/feedback?page=1&limit=8&category=...&sentiment=...`
-  - `POST /api/v1/feedback`
-  - `PUT /api/v1/feedback/:id`
-  - `DELETE /api/v1/feedback/:id`
-  - `POST /api/v1/feedback/batch` (CSV/JSON upload)
-- **Current State**: Seed data in `src/data/seedData.js`, mutations synced to `localStorage`, API contracts defined in `src/services/api/feedbackService.js`.
+- **Implemented Backend API (Phase 4 Step 10)**:
+  - `GET /api/v1/feedback?workspaceId=...&page=1&limit=...&category=...&sentiment=...&priority=...&linkedFeature=...&search=...`
+  - `POST /api/v1/feedback?workspaceId=...` (requires `externalId` or `Idempotency-Key`)
+  - `GET /api/v1/feedback/:id` (checks membership in the record's workspace)
+  - `POST /api/v1/feedback/batch?workspaceId=...` with JSON `{ "items": [...] }`; maximum 500 rows
+  - `GET /api/v1/feedback/batch/:batchId?workspaceId=...`
+  - `POST /api/v1/feedback/batch/:batchId/retry?workspaceId=...` with previously rejected `{ "rowNumber", "item" }` rows
+  - Input `linkedFeatureId` maps to the existing `promotedFeatureId` field and is validated against the same workspace.
+  - Batch retries resubmit only failed rows with their original stable `id` or `externalId`; no text-similarity deduplication is applied.
+- **Not Implemented in this step**: Feedback edit/delete routes and multipart CSV upload. The frontend remains local/demo-backed; this step does not modify frontend files or wire its API client.
 
 ---
 
