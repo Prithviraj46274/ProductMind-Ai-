@@ -1,11 +1,12 @@
 /**
  * ProductMind AI — Centralized API Client
  * Provides robust HTTP request handling, authentication header injection,
- * error normalization, and transparent demo mode handling.
+ * workspace context injection, error normalization, and transparent demo mode handling.
  */
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '')
 const AUTH_TOKEN_KEY = 'pmai_mock_auth_session'
+const ACTIVE_WORKSPACE_KEY = 'pmai_active_workspace_id'
 
 export function isBackendConfigured() {
   return Boolean(API_BASE_URL && API_BASE_URL.trim().length > 0)
@@ -23,9 +24,35 @@ export function getAuthToken() {
     const raw = localStorage.getItem(AUTH_TOKEN_KEY)
     if (!raw) return null
     const session = JSON.parse(raw)
-    return session?.token || null
+    return session?.token || session?.accessToken || session?.access_token || null
   } catch {
     return null
+  }
+}
+
+/**
+ * Get active workspace ID
+ */
+export function getActiveWorkspaceId() {
+  try {
+    return localStorage.getItem(ACTIVE_WORKSPACE_KEY) || null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Set active workspace ID
+ */
+export function setActiveWorkspaceId(workspaceId) {
+  try {
+    if (workspaceId) {
+      localStorage.setItem(ACTIVE_WORKSPACE_KEY, workspaceId)
+    } else {
+      localStorage.removeItem(ACTIVE_WORKSPACE_KEY)
+    }
+  } catch {
+    // Ignore storage errors
   }
 }
 
@@ -40,8 +67,9 @@ export async function request(endpoint, options = {}) {
     method = 'GET',
     headers = {},
     body = null,
+    params = null,
     fallbackDemoData = null,
-    timeout = 10000,
+    timeout = 30000,
     ...rest
   } = options
 
@@ -58,14 +86,28 @@ export async function request(endpoint, options = {}) {
 
   // Live Backend Request
   const token = getAuthToken()
+  const activeWorkspaceId = getActiveWorkspaceId()
   const defaultHeaders = {
     'Accept': 'application/json',
     ...(body instanceof FormData ? {} : { 'Content-Type': 'application/json' }),
     ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+    ...(activeWorkspaceId ? { 'X-Workspace-Id': activeWorkspaceId } : {}),
     ...headers,
   }
 
-  const url = `${API_BASE_URL}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`
+  let url = `${API_BASE_URL}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`
+  if (params && typeof params === 'object') {
+    const searchParams = new URLSearchParams()
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '') {
+        searchParams.append(key, String(value))
+      }
+    })
+    const queryStr = searchParams.toString()
+    if (queryStr) {
+      url += `${url.includes('?') ? '&' : '?'}${queryStr}`
+    }
+  }
   const controller = new AbortController()
   const timeoutId = setTimeout(() => controller.abort(), timeout)
 
@@ -89,9 +131,24 @@ export async function request(endpoint, options = {}) {
     }
 
     if (!response.ok) {
+      let errorMsg = `HTTP ${response.status}: ${response.statusText}`
+      if (parsed) {
+        if (typeof parsed.detail === 'string') {
+          errorMsg = parsed.detail
+        } else if (Array.isArray(parsed.detail)) {
+          errorMsg = parsed.detail.map(d => {
+            const loc = Array.isArray(d.loc) ? d.loc.filter(l => l !== 'body').join('.') : 'field'
+            return `${loc}: ${d.msg}`
+          }).join(', ')
+        } else if (parsed.message) {
+          errorMsg = parsed.message
+        } else if (parsed.error) {
+          errorMsg = parsed.error
+        }
+      }
       return {
         success: false,
-        error: (parsed && (parsed.message || parsed.error)) || `HTTP ${response.status}: ${response.statusText}`,
+        error: errorMsg,
         status: response.status,
         isDemo: false,
         timestamp: new Date().toISOString(),
@@ -122,9 +179,12 @@ export const apiClient = {
   get: (endpoint, options) => request(endpoint, { method: 'GET', ...options }),
   post: (endpoint, body, options) => request(endpoint, { method: 'POST', body, ...options }),
   put: (endpoint, body, options) => request(endpoint, { method: 'PUT', body, ...options }),
+  patch: (endpoint, body, options) => request(endpoint, { method: 'PATCH', body, ...options }),
   delete: (endpoint, options) => request(endpoint, { method: 'DELETE', ...options }),
   isConfigured: isBackendConfigured,
   getBaseUrl: getApiBaseUrl,
+  getActiveWorkspaceId,
+  setActiveWorkspaceId,
 }
 
 export default apiClient

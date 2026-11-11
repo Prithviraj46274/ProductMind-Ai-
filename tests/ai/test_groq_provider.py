@@ -215,3 +215,14 @@ def test_provider_factory_selection_groq(configured_groq_settings):
     )
     gemini_provider = get_provider(gemini_settings)
     assert gemini_provider.provider_name == "google"
+
+
+def test_groq_error_mapping_output_parser_exception(configured_groq_settings):
+    """Verify OutputParserException maps to AISchemaValidationException so BaseAgent retries cleanly."""
+    from langchain_core.exceptions import OutputParserException
+    from app.ai.exceptions import AISchemaValidationException
+
+    provider = GroqProvider(settings=configured_groq_settings)
+    mapped = provider._map_exception(OutputParserException("Invalid json output: EOF"))
+    assert isinstance(mapped, AISchemaValidationException)
+    assert mapped.provider == "groq"

@@ -1,6 +1,7 @@
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useEffect, useCallback } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
+import { useWorkspace } from '../context/WorkspaceContext'
 import {
   Layers,
   Sparkles,
@@ -17,6 +18,9 @@ import {
   Plus,
   RefreshCw,
   FolderPlus,
+  Brain,
+  Loader2,
+  Users,
 } from 'lucide-react'
 import { Card, Badge, Button, Modal, DemoModeBanner, EmptyState, LoadingState } from '../components/common'
 import { aggregationService } from '../services/api/aggregationService'
@@ -24,6 +28,7 @@ import { aggregationService } from '../services/api/aggregationService'
 export function AggregationPage() {
   const navigate = useNavigate()
   const { feedback, features, addFeature, addToast, updateFeedback } = useApp()
+  const { currentWorkspace } = useWorkspace()
 
   const [searchTerm, setSearchTerm] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('All')
@@ -34,13 +39,109 @@ export function AggregationPage() {
   const [editingGroup, setEditingGroup] = useState(null)
   const [newTitle, setNewTitle] = useState('')
 
-  // Computed groups using service
-  const initialGroups = useMemo(() => {
+  // Backend state
+  const [backendGroups, setBackendGroups] = useState([])
+  const [isLoadingBackend, setIsLoadingBackend] = useState(false)
+  const [isClustering, setIsClustering] = useState(false)
+  const [clusteringError, setClusteringError] = useState(null)
+
+  // Fetch groups from backend on mount or workspace change
+  const loadGroups = useCallback(async () => {
+    if (!currentWorkspace?.id) return
+    setIsLoadingBackend(true)
+    try {
+      const res = await aggregationService.getFeatureGroups(currentWorkspace.id)
+      if (Array.isArray(res) && res.length > 0) {
+        setBackendGroups(res)
+      }
+    } catch (err) {
+      console.warn('Could not fetch backend groups:', err)
+    } finally {
+      setIsLoadingBackend(false)
+    }
+  }, [currentWorkspace?.id])
+
+  useEffect(() => {
+    loadGroups()
+  }, [loadGroups])
+
+  // Run AI Grouping
+  const handleRunAIGrouping = async () => {
+    if (!currentWorkspace?.id) {
+      addToast('Please select a workspace first.', 'warning')
+      return
+    }
+
+    setIsClustering(true)
+    setClusteringError(null)
+
+    try {
+      const res = await aggregationService.groupFeatures({
+        workspaceId: currentWorkspace.id,
+        forceRegroup: true,
+      })
+
+      if (res?.feature_groups) {
+        setBackendGroups(res.feature_groups)
+        addToast(
+          `AI clustered ${res.total_requests_grouped || 0} feedback items into ${res.total_feature_groups || res.feature_groups.length} feature groups!`,
+          'success'
+        )
+      } else {
+        await loadGroups()
+      }
+    } catch (err) {
+      const msg = err?.message || 'Feature Intelligence grouping failed.'
+      setClusteringError(msg)
+      addToast(msg, 'error')
+    } finally {
+      setIsClustering(false)
+    }
+  }
+
+  // Fallback initial groups from local data
+  const initialLocalGroups = useMemo(() => {
     return aggregationService.generateAggregatedGroups(feedback, features)
   }, [feedback, features])
 
+  // Map backend groups if available, else local
+  const normalizedGroups = useMemo(() => {
+    if (backendGroups.length > 0) {
+      return backendGroups.map((g) => {
+        const title = g.name || g.title || 'Untitled Group'
+        const existing = features.find((f) => f.name.toLowerCase() === title.toLowerCase())
+        return {
+          id: g.id || `grp-${Math.random().toString(36).substring(2, 7)}`,
+          title,
+          category: g.category || 'Feature',
+          primaryTag: g.category || 'General',
+          count: g.request_count ?? g.feedback_ids?.length ?? 1,
+          uniqueCustomers: g.unique_customers_count ?? 1,
+          sentimentDistribution: {
+            Positive: g.average_sentiment_score && g.average_sentiment_score > 0 ? 1 : 0,
+            Neutral: g.average_sentiment_score === 0 ? 1 : 0,
+            Negative: g.average_sentiment_score && g.average_sentiment_score < 0 ? 1 : 0,
+          },
+          painPoints: g.recurring_pain_points || (g.customer_pain_point ? [g.customer_pain_point] : []),
+          excerpts: (g.evidence_quotes || []).map((quote, idx) => ({
+            id: `ev-${idx}`,
+            customer: 'Customer Voice',
+            company: 'Verified Demand',
+            snippet: quote,
+          })),
+          isPromoted: Boolean(existing || g.status === 'promoted' || g.status === 'prioritized'),
+          promotedFeatureName: existing?.name || null,
+          promotedFeatureScore: existing?.score || null,
+          feedbackItems: (g.feedback_ids || []).map((fid) => ({ id: fid })),
+          isAIGenerated: true,
+        }
+      })
+    }
+    return initialLocalGroups
+  }, [backendGroups, initialLocalGroups, features])
+
   const [customGroups, setCustomGroups] = useState(null)
-  const activeGroups = customGroups || initialGroups
+  const activeGroups = customGroups || normalizedGroups
 
   const filteredGroups = useMemo(() => {
     return activeGroups.filter(grp => {
@@ -125,6 +226,16 @@ export function AggregationPage() {
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
+          <Button
+            variant="primary"
+            size="sm"
+            disabled={isClustering}
+            onClick={handleRunAIGrouping}
+            icon={isClustering ? Loader2 : Brain}
+          >
+            {isClustering ? 'Clustering Feedback...' : 'Run AI Grouping'}
+          </Button>
+
           <Link to="/feedback?tab=insights">
             <Button variant="outline" size="sm" icon={Sparkles}>
               AI Insights
@@ -142,6 +253,12 @@ export function AggregationPage() {
           </Link>
         </div>
       </div>
+
+      {clusteringError && (
+        <div className="p-3.5 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900 text-rose-600 dark:text-rose-400 text-xs">
+          {clusteringError}
+        </div>
+      )}
 
       {/* Search & Filter Bar */}
       <div className="flex flex-col sm:flex-row items-center gap-3 bg-white dark:bg-navy-900 p-3 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">

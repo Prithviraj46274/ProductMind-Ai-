@@ -70,14 +70,14 @@ class GroqUsageMetrics:
 
 
 def _extract_retry_wait(exc: Exception, attempt: int) -> float:
-    """Extracts wait duration from 429 error message or response header, bounded between 1.0s and 15.0s."""
+    """Extracts wait duration from 429 error message or response header, bounded between 1.0s and 45.0s."""
     exc_str = str(exc).lower()
     if "max completion tokens reached" in exc_str:
-        return min(5.0 * attempt + 1.0, 15.0)
+        return min(6.0 * attempt + 2.0, 20.0)
     match = re.search(r"try again in ([0-9\.]+)s", exc_str, re.IGNORECASE)
     if match:
         try:
-            return min(max(float(match.group(1)) + 0.5, 1.0), 15.0)
+            return min(max(float(match.group(1)) + 1.0, 1.0), 45.0)
         except (ValueError, TypeError):
             pass
     resp = getattr(exc, "response", None)
@@ -85,10 +85,10 @@ def _extract_retry_wait(exc: Exception, attempt: int) -> float:
         retry_after = resp.headers.get("retry-after")
         if retry_after:
             try:
-                return min(max(float(retry_after) + 0.5, 1.0), 15.0)
+                return min(max(float(retry_after) + 1.0, 1.0), 45.0)
             except (ValueError, TypeError):
                 pass
-    return min(2.0 ** attempt * 2.0, 10.0)
+    return min(float(attempt) * 10.0, 30.0)
 
 
 class GroqProvider(BaseLLMProvider):
@@ -194,7 +194,7 @@ class GroqProvider(BaseLLMProvider):
         """Invokes Groq and returns sanitized generated text response with bounded 429 backoff."""
         client = self.get_chat_model(**kwargs)
         attempt = 0
-        max_rate_limit_retries = 2
+        max_rate_limit_retries = 3
 
         while True:
             self.metrics.total_requests += 1
@@ -261,7 +261,7 @@ class GroqProvider(BaseLLMProvider):
         """
         client = self.get_chat_model(**kwargs)
         attempt = 0
-        max_rate_limit_retries = 2
+        max_rate_limit_retries = 3
 
         # Configure structured chain with include_raw=True where supported for token tracking
         has_raw = True
@@ -476,8 +476,8 @@ class GroqProvider(BaseLLMProvider):
                 original_exception=exc,
             )
 
-        # 3. Model JSON formatting validation failure
-        if "json_validate_failed" in exc_str:
+        # 3. Model JSON formatting / output parsing failure
+        if "json_validate_failed" in exc_str or "outputparser" in exc_type or "invalid json output" in exc_str:
             return AISchemaValidationException(
                 f"Groq model produced invalid JSON format: {exc}",
                 provider=self.provider_name,

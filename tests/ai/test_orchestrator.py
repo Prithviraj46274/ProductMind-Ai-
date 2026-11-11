@@ -686,3 +686,32 @@ async def test_orchestrator_health_diagnostic(orchestrator):
     for agent in health.specialist_agents:
         assert agent["status"] in ("healthy", "ready")
     assert health.active_runs_cached >= 0
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_translates_product_strategic_context_for_prioritization(
+    orchestrator, mock_prioritization_service, mock_user
+):
+    """Verifies Orchestrator converts ProductStrategicContext cleanly into Prioritization StrategicContext."""
+    from app.ai.agents.product_planning.schemas import ProductStrategicContext
+
+    request = OrchestratorRequest(
+        workspace_id=MOCK_WS_ID,
+        mode=PipelineMode.FULL,
+        feedback_ids=[MOCK_FB_ID_1, MOCK_FB_ID_2],
+        strategic_context=ProductStrategicContext(
+            product_name="ProductMind AI",
+            business_goals=["Retain enterprise accounts"],
+            target_customer_segments=["Enterprise FinOps"],
+            current_quarter_objectives=["Launch warehouse scheduler"],
+        ),
+    )
+
+    response = await orchestrator.run_pipeline(request=request, user=mock_user)
+
+    assert response.status == PipelineStatus.COMPLETED
+    p_req = mock_prioritization_service.analyze_prioritization.call_args[0][0]
+    assert p_req.strategic_context is not None
+    assert p_req.strategic_context.primary_business_goals == ["Retain enterprise accounts"]
+    assert p_req.strategic_context.target_customer_segments == ["Enterprise FinOps"]
+    assert p_req.strategic_context.current_quarter_okrs == ["Launch warehouse scheduler"]

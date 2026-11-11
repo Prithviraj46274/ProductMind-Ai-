@@ -9,6 +9,8 @@ import { calculatePriorityScore } from '../data/scoringFormulas'
 import { createHistoryRecord, appendHistory } from '../services/historyService'
 import { queryCopilot } from '../services/aiSimulationService'
 import { copilotService } from '../services/api/copilotService'
+import { feedbackService } from '../services/api/feedbackService'
+import { isBackendConfigured } from '../services/api/apiClient'
 
 const AppContext = createContext(null)
 
@@ -86,8 +88,8 @@ export function AppProvider({ children }) {
   }
 
   // --- FEEDBACK ACTIONS ---
-  const addFeedback = (item) => {
-    const newItem = {
+  const addFeedback = async (item) => {
+    let newItem = {
       id: item.id || `fb-${Date.now()}`,
       title: item.title,
       description: item.description,
@@ -100,6 +102,20 @@ export function AppProvider({ children }) {
       date: item.date || new Date().toISOString().split('T')[0],
       linkedFeatureId: item.linkedFeatureId || null,
     }
+
+    if (isBackendConfigured()) {
+      try {
+        const created = await feedbackService.createFeedback(item)
+        if (created?.id) {
+          newItem.id = String(created.id)
+          if (created.category) newItem.category = created.category
+          if (created.sentiment) newItem.sentiment = created.sentiment
+        }
+      } catch (err) {
+        console.warn('Backend feedback creation fallback to local state:', err)
+      }
+    }
+
     setFeedback(prev => [newItem, ...prev])
     recordActivity('feedback', newItem.id, 'created', `Created feedback: "${newItem.title}"`, null, newItem)
     addToast(`Feedback "${newItem.title}" added successfully`, 'success')

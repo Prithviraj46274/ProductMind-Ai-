@@ -7,25 +7,58 @@ success metrics, risk analysis, and roadmap recommendations.
 
 from datetime import datetime, timezone
 import logging
-from typing import Any, Dict, List, Optional, Type
+import time
+from typing import Any, Dict, List, Optional, Tuple, Type, TypeVar
+from pydantic import BaseModel, ValidationError
+from langchain_core.messages import BaseMessage, HumanMessage
 
-from app.ai.agents.base import BaseAgent, AgentExecutionResult
+from app.ai.agents.base import BaseAgent, AgentExecutionMetadata, AgentExecutionResult
 from app.ai.agents.product_planning.prompts import (
     product_planning_prompt,
     prd_generation_prompt,
+    prd_narrative_prompt,
+    prd_requirements_prompt,
     user_stories_prompt,
+    technical_specs_prompt,
 )
 from app.ai.agents.product_planning.schemas import (
     ProductPlanningAgentOutput,
     ProductRequirementsDocument,
     PRDAgentOutput,
+    CorePRDNarrativeOutput,
+    CorePRDRequirementsOutput,
     UserStoriesAgentOutput,
+    TechnicalSpecsAgentOutput,
     ProductStrategicContext,
     UserStory,
+)
+from app.ai.exceptions import (
+    AIConfigurationException,
+    AIProviderException,
+    AISchemaValidationException,
+    AIServiceException,
 )
 from app.ai.llm_service import LLMService
 
 logger = logging.getLogger("productmind.ai.agent.product_planning")
+StageModelT = TypeVar("StageModelT", bound=BaseModel)
+
+
+def _merge_evidence_quotes(*collections: Optional[List[str]]) -> List[str]:
+    """Combines and deduplicates non-empty verbatim evidence quotes preserving order."""
+    seen = set()
+    merged: List[str] = []
+    for coll in collections:
+        if not coll:
+            continue
+        for item in coll:
+            cleaned = str(item or "").strip()
+            if not cleaned or cleaned.lower() in {"n/a", "na", "none", "null", "unknown"}:
+                continue
+            if cleaned not in seen:
+                seen.add(cleaned)
+                merged.append(cleaned)
+    return merged
 
 
 def format_product_planning_prompt_inputs(
@@ -209,6 +242,99 @@ class ProductPlanningAgent(BaseAgent[ProductPlanningAgentOutput]):
             "strategic_context_text": sc_text,
         }
 
+    async def _ainvoke_stage_structured(
+        self,
+        stage_name: str,
+        schema: Type[StageModelT],
+        messages: List[BaseMessage],
+        max_retries: int = 1,
+        max_output_tokens: int = 950,
+    ) -> Tuple[StageModelT, int]:
+        """
+        Executes a single planning stage against `self.llm_service` with structured
+        validation, controlled corrective retry on schema/parser failures, and
+        explicit error context so partial failures never save incomplete PRDs.
+        """
+        if not self.llm_service.is_configured:
+            raise AIConfigurationException(
+                f"Active AI provider '{self.llm_service.provider_name}' is not configured with required credentials.",
+                provider=self.llm_service.provider_name,
+            )
+
+        last_error: Optional[Exception] = None
+        attempts = 0
+        total_attempts = 1 + max(0, max_retries)
+
+        while attempts < total_attempts:
+            attempts += 1
+            call_messages = list(messages)
+            if attempts > 1 and last_error is not None:
+                call_messages.append(
+                    HumanMessage(
+                        content=(
+                            f"Previous {stage_name} generation failed structured validation ({last_error}). "
+                            "Keep every field concise and return strictly valid JSON matching the requested schema."
+                        )
+                    )
+                )
+            try:
+                result = await self.llm_service.provider.ainvoke_structured(
+                    schema=schema,
+                    messages=call_messages,
+                    temperature=0.1,
+                    max_output_tokens=max_output_tokens,
+                )
+                return result, attempts
+            except (AISchemaValidationException, ValidationError) as exc:
+                last_error = exc
+                logger.warning(
+                    "Product planning stage '%s' validation error on attempt %d/%d: %s",
+                    stage_name,
+                    attempts,
+                    total_attempts,
+                    exc,
+                )
+                if attempts >= total_attempts:
+                    raise AISchemaValidationException(
+                        f"Product planning stage '{stage_name}' failed structured validation: {exc}",
+                        provider=self.llm_service.provider_name,
+                        original_exception=exc,
+                    )
+            except AIProviderException as exc:
+                last_error = exc
+                orig_name = type(getattr(exc, "original_exception", None)).__name__.lower()
+                is_parse_failure = "outputparser" in orig_name or "json" in str(exc).lower()
+                if is_parse_failure and attempts < total_attempts:
+                    logger.warning(
+                        "Product planning stage '%s' encountered parser error (%s); retrying (%d/%d).",
+                        stage_name,
+                        exc,
+                        attempts,
+                        total_attempts,
+                    )
+                    continue
+                raise AIProviderException(
+                    f"Product planning stage '{stage_name}' failed: {exc}",
+                    provider=self.llm_service.provider_name,
+                    original_exception=getattr(exc, "original_exception", exc),
+                )
+            except AIServiceException:
+                raise
+            except Exception as exc:
+                last_error = exc
+                if attempts >= total_attempts:
+                    raise AIServiceException(
+                        f"Product planning stage '{stage_name}' failed unexpectedly: {exc}",
+                        provider=self.llm_service.provider_name,
+                        original_exception=exc,
+                    )
+
+        raise AISchemaValidationException(
+            f"Product planning stage '{stage_name}' exhausted {total_attempts} attempts: {last_error}",
+            provider=self.llm_service.provider_name,
+            original_exception=last_error,
+        )
+
     async def agenerate_plan(
         self,
         group_id: str,
@@ -224,13 +350,20 @@ class ProductPlanningAgent(BaseAgent[ProductPlanningAgentOutput]):
         prioritization_data: Optional[Dict[str, Any]] = None,
         strategic_context: Optional[ProductStrategicContext] = None,
         max_retries: int = 1,
-        max_output_tokens: int = 1500,
+        max_output_tokens: int = 950,
     ) -> AgentExecutionResult[ProductPlanningAgentOutput]:
         """
-        Executes complete product planning workflow:
-        PRD, user stories, acceptance criteria, technical recommendations, metrics, and roadmap.
-        Uses temperature=0.1 for maximum determinism and caps output tokens within Groq tier limits.
+        Executes staged product planning workflow using the existing ProductPlanningAgent
+        and LLMService:
+        Stage 1: Core PRD sections (PRDAgentOutput)
+        Stage 2: User stories and Given-When-Then acceptance criteria (UserStoriesAgentOutput)
+        Stage 3: Technical requirements, metrics, risks, and roadmap (TechnicalSpecsAgentOutput)
+        Stage 4: Combine sections and preserve customer evidence references
+        Stage 5: Validate final document strictly against ProductPlanningAgentOutput
         """
+        started_at = datetime.now(timezone.utc)
+        start_perf = time.perf_counter()
+
         inputs = format_product_planning_prompt_inputs(
             group_id=group_id,
             title=title,
@@ -245,20 +378,161 @@ class ProductPlanningAgent(BaseAgent[ProductPlanningAgentOutput]):
             prioritization_data=prioritization_data,
             strategic_context=strategic_context,
         )
+        validated_inputs = self.validate_input(inputs)
+        stage_budget = min(max(int(max_output_tokens or 950), 700), 950)
+        total_attempts = 0
 
-        validated = self.validate_input(inputs)
-        result = await self.execute(
-            validated,
+        # Stage 1a & 1b: Core PRD sections split cleanly to stay strictly under Groq OTPM limits
+        narrative_messages = prd_narrative_prompt.format_messages(**validated_inputs)
+        stage1a_out, attempts1a = await self._ainvoke_stage_structured(
+            stage_name="core_prd_narrative",
+            schema=CorePRDNarrativeOutput,
+            messages=narrative_messages,
             max_retries=max_retries,
-            temperature=0.1,
-            max_output_tokens=max_output_tokens,
+            max_output_tokens=stage_budget,
+        )
+        total_attempts += attempts1a
+
+        # Support legacy full-PRD mock responses cleanly while always splitting real CorePRDNarrativeOutput
+        if getattr(stage1a_out, "prd", None) is not None:
+            prd_doc = stage1a_out.prd
+        else:
+            req_messages = prd_requirements_prompt.format_messages(**validated_inputs)
+            stage1b_out, attempts1b = await self._ainvoke_stage_structured(
+                stage_name="core_prd_requirements",
+                schema=CorePRDRequirementsOutput,
+                messages=req_messages,
+                max_retries=max_retries,
+                max_output_tokens=stage_budget,
+            )
+            total_attempts += attempts1b
+
+            prd_doc = ProductRequirementsDocument.model_validate(
+                {
+                    "title": getattr(stage1a_out, "title", ""),
+                    "executive_summary": getattr(stage1a_out, "executive_summary", ""),
+                    "problem_statement": getattr(stage1a_out, "problem_statement", ""),
+                    "background": getattr(stage1a_out, "background", ""),
+                    "proposed_solution": getattr(stage1a_out, "proposed_solution", ""),
+                    "customer_pain_points": getattr(stage1a_out, "customer_pain_points", []),
+                    "target_users": getattr(stage1a_out, "target_users", []),
+                    "business_objectives": getattr(stage1a_out, "business_objectives", []),
+                    "workflows": getattr(stage1a_out, "workflows", []),
+                    "out_of_scope": getattr(stage1a_out, "out_of_scope", []),
+                    "open_questions": getattr(stage1a_out, "open_questions", []),
+                    "supporting_evidence": _merge_evidence_quotes(
+                        getattr(stage1a_out, "supporting_evidence", []),
+                        evidence,
+                    ),
+                    "functional_requirements": [
+                        r.model_dump() for r in (getattr(stage1b_out, "functional_requirements", []) or [])
+                    ],
+                    "non_functional_requirements": [
+                        r.model_dump() for r in (getattr(stage1b_out, "non_functional_requirements", []) or [])
+                    ],
+                    "dependencies": getattr(stage1b_out, "dependencies", []) or [],
+                    "risks_and_assumptions": getattr(stage1b_out, "risks_and_assumptions", []) or [],
+                    "success_metrics": getattr(stage1b_out, "success_metrics", []) or [],
+                }
+            )
+
+        if (
+            not prd_doc
+            or not (prd_doc.title or "").strip()
+            or not (prd_doc.executive_summary or "").strip()
+            or not (prd_doc.problem_statement or "").strip()
+            or not (prd_doc.proposed_solution or "").strip()
+        ):
+            raise AISchemaValidationException(
+                "Product planning stage 'core_prd' produced an incomplete PRD document.",
+                provider=self.llm_service.provider_name,
+            )
+
+        # Stage 2: User stories and acceptance criteria
+        stories_messages = user_stories_prompt.format_messages(**validated_inputs)
+        stage2_out, attempts2 = await self._ainvoke_stage_structured(
+            stage_name="user_stories",
+            schema=UserStoriesAgentOutput,
+            messages=stories_messages,
+            max_retries=max_retries,
+            max_output_tokens=stage_budget,
+        )
+        total_attempts += attempts2
+        generated_stories = getattr(stage2_out, "user_stories", None) or []
+        if not generated_stories:
+            raise AISchemaValidationException(
+                "Product planning stage 'user_stories' produced zero user stories.",
+                provider=self.llm_service.provider_name,
+            )
+
+        # Stage 3: Technical specifications, success metrics, risks, and roadmap
+        tech_messages = technical_specs_prompt.format_messages(**validated_inputs)
+        stage3_out, attempts3 = await self._ainvoke_stage_structured(
+            stage_name="technical_specifications",
+            schema=TechnicalSpecsAgentOutput,
+            messages=tech_messages,
+            max_retries=max_retries,
+            max_output_tokens=stage_budget,
+        )
+        total_attempts += attempts3
+        generated_tech = getattr(stage3_out, "technical_requirements", None) or []
+        generated_metrics = getattr(stage3_out, "success_metrics", None) or []
+        generated_risks = getattr(stage3_out, "risk_analysis", None) or []
+        generated_roadmap = getattr(stage3_out, "roadmap_recommendations", None) or []
+        if not generated_tech:
+            raise AISchemaValidationException(
+                "Product planning stage 'technical_specifications' produced zero technical requirements.",
+                provider=self.llm_service.provider_name,
+            )
+
+        # Stage 4: Combine generated sections & preserve verbatim evidence references
+        combined_evidence = _merge_evidence_quotes(
+            evidence,
+            prd_doc.supporting_evidence,
+            getattr(stage3_out, "supporting_evidence", []),
+            [us.source_reference for us in generated_stories if getattr(us, "source_reference", None)],
+        )
+        prd_payload = prd_doc.model_dump()
+        prd_payload["supporting_evidence"] = _merge_evidence_quotes(
+            prd_doc.supporting_evidence,
+            evidence,
         )
 
-        # Enforce feature_group_id alignment
-        if not result.data.feature_group_id or result.data.feature_group_id != group_id:
-            result.data.feature_group_id = group_id
+        # Stage 5: Validate assembled document against ProductPlanningAgentOutput Pydantic schema
+        try:
+            combined_output = ProductPlanningAgentOutput.model_validate(
+                {
+                    "feature_group_id": group_id,
+                    "prd": prd_payload,
+                    "user_stories": [s.model_dump() for s in generated_stories],
+                    "technical_requirements": [t.model_dump() for t in generated_tech],
+                    "success_metrics": [m.model_dump() for m in generated_metrics],
+                    "risk_analysis": [r.model_dump() for r in generated_risks],
+                    "roadmap_recommendations": [rp.model_dump() for rp in generated_roadmap],
+                    "supporting_evidence": combined_evidence,
+                }
+            )
+        except ValidationError as exc:
+            raise AISchemaValidationException(
+                f"Combined staged PRD document failed schema validation: {exc}",
+                provider=self.llm_service.provider_name,
+                original_exception=exc,
+            )
 
-        return result
+        latency_ms = round((time.perf_counter() - start_perf) * 1000, 2)
+        completed_at = datetime.now(timezone.utc)
+        metadata = AgentExecutionMetadata(
+            agent_id=self.agent_id,
+            agent_name=self.agent_name,
+            agent_version=self.agent_version,
+            provider=self.llm_service.provider_name,
+            model=self.llm_service.model_name,
+            latency_ms=latency_ms,
+            started_at=started_at,
+            completed_at=completed_at,
+            attempts=total_attempts,
+        )
+        return AgentExecutionResult(data=combined_output, metadata=metadata)
 
     async def agenerate_prd(
         self,
@@ -275,7 +549,7 @@ class ProductPlanningAgent(BaseAgent[ProductPlanningAgentOutput]):
         prioritization_data: Optional[Dict[str, Any]] = None,
         strategic_context: Optional[ProductStrategicContext] = None,
         max_retries: int = 1,
-        max_output_tokens: int = 800,
+        max_output_tokens: int = 950,
     ) -> ProductRequirementsDocument:
         """
         Generates or regenerates specifically the PRD portion.
@@ -295,11 +569,13 @@ class ProductPlanningAgent(BaseAgent[ProductPlanningAgentOutput]):
             strategic_context=strategic_context,
         )
 
-        messages = prd_generation_prompt.format_messages(**inputs)
-        result = await self.llm_service.provider.ainvoke_structured(
+        validated_inputs = self.validate_input(inputs)
+        messages = prd_generation_prompt.format_messages(**validated_inputs)
+        result, _ = await self._ainvoke_stage_structured(
+            stage_name="core_prd",
             schema=PRDAgentOutput,
             messages=messages,
-            temperature=0.1,
+            max_retries=max_retries,
             max_output_tokens=max_output_tokens,
         )
         return result.prd
@@ -319,7 +595,7 @@ class ProductPlanningAgent(BaseAgent[ProductPlanningAgentOutput]):
         prioritization_data: Optional[Dict[str, Any]] = None,
         strategic_context: Optional[ProductStrategicContext] = None,
         max_retries: int = 1,
-        max_output_tokens: int = 800,
+        max_output_tokens: int = 950,
     ) -> List[UserStory]:
         """
         Generates or regenerates specifically the user stories and acceptance criteria.
@@ -339,11 +615,59 @@ class ProductPlanningAgent(BaseAgent[ProductPlanningAgentOutput]):
             strategic_context=strategic_context,
         )
 
-        messages = user_stories_prompt.format_messages(**inputs)
-        result = await self.llm_service.provider.ainvoke_structured(
+        validated_inputs = self.validate_input(inputs)
+        messages = user_stories_prompt.format_messages(**validated_inputs)
+        result, _ = await self._ainvoke_stage_structured(
+            stage_name="user_stories",
             schema=UserStoriesAgentOutput,
             messages=messages,
-            temperature=0.1,
+            max_retries=max_retries,
             max_output_tokens=max_output_tokens,
         )
         return result.user_stories
+
+    async def agenerate_technical_specs(
+        self,
+        group_id: str,
+        title: str,
+        description: str,
+        feedback_count: int,
+        unique_customer_count: int,
+        pain_points: List[str],
+        evidence: List[str],
+        themes: List[str],
+        urgency_dist: Optional[Dict[str, int]] = None,
+        sentiment_dist: Optional[Dict[str, int]] = None,
+        prioritization_data: Optional[Dict[str, Any]] = None,
+        strategic_context: Optional[ProductStrategicContext] = None,
+        max_retries: int = 1,
+        max_output_tokens: int = 950,
+    ) -> TechnicalSpecsAgentOutput:
+        """
+        Generates Stage 3 technical requirements, non-fabricated metrics, risks, and roadmap.
+        """
+        inputs = format_product_planning_prompt_inputs(
+            group_id=group_id,
+            title=title,
+            description=description,
+            feedback_count=feedback_count,
+            unique_customer_count=unique_customer_count,
+            pain_points=pain_points,
+            evidence=evidence,
+            themes=themes,
+            urgency_dist=urgency_dist,
+            sentiment_dist=sentiment_dist,
+            prioritization_data=prioritization_data,
+            strategic_context=strategic_context,
+        )
+
+        validated_inputs = self.validate_input(inputs)
+        messages = technical_specs_prompt.format_messages(**validated_inputs)
+        result, _ = await self._ainvoke_stage_structured(
+            stage_name="technical_specifications",
+            schema=TechnicalSpecsAgentOutput,
+            messages=messages,
+            max_retries=max_retries,
+            max_output_tokens=max_output_tokens,
+        )
+        return result

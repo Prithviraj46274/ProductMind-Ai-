@@ -35,10 +35,12 @@ from app.ai.agents.prioritization.scoring import (
     rank_prioritization_results,
 )
 from app.core.enums import PlatformRole, MembershipStatus
+from app.models.analytics import AnalyticsDailyRollup
 from app.models.auth import User
 from app.models.intelligence import FeatureGroup
 from app.models.planning import PrioritizationScenario
 from app.repositories import (
+    AnalyticsDailyRollupRepository,
     FeatureGroupRepository,
     FeedbackRepository,
     PrioritizationScenarioRepository,
@@ -63,6 +65,7 @@ class PrioritizationService:
         feedback_repo: Optional[FeedbackRepository] = None,
         workspace_repo: Optional[WorkspaceRepository] = None,
         membership_repo: Optional[WorkspaceMembershipRepository] = None,
+        analytics_rollup_repo: Optional[AnalyticsDailyRollupRepository] = None,
     ):
         self.agent = agent or PrioritizationAgent()
         self.prioritization_repo = prioritization_repo
@@ -70,6 +73,7 @@ class PrioritizationService:
         self.feedback_repo = feedback_repo
         self.workspace_repo = workspace_repo
         self.membership_repo = membership_repo
+        self.analytics_rollup_repo = analytics_rollup_repo
 
     async def verify_workspace_access(self, user: User, workspace_id: Any) -> None:
         """
@@ -170,6 +174,150 @@ class PrioritizationService:
                 f"until broader customer demand or stronger strategic alignment emerges."
             )
 
+    @staticmethod
+    def _coerce_analytics_evidence(raw: Any) -> Optional[ProductAnalyticsData]:
+        """Converts raw dict analytics evidence into ProductAnalyticsData when metrics exist."""
+        if isinstance(raw, ProductAnalyticsData):
+            return raw if raw.is_available else None
+        if not isinstance(raw, dict):
+            return None
+
+        candidate_keys = {
+            "feature_usage_frequency",
+            "active_users",
+            "adoption_rate",
+            "drop_off_rate",
+            "user_engagement_score",
+            "trend_direction",
+            "is_available",
+        }
+        if not any(raw.get(k) is not None for k in candidate_keys - {"is_available"}):
+            return None
+
+        payload = {k: raw[k] for k in candidate_keys if k in raw and raw[k] is not None}
+        payload["is_available"] = bool(raw.get("is_available", True))
+        try:
+            return ProductAnalyticsData(**payload)
+        except Exception:
+            return None
+
+    @staticmethod
+    def _extract_analytics_from_rollups(
+        group: FeatureGroup,
+        rollups: List[AnalyticsDailyRollup],
+    ) -> Optional[ProductAnalyticsData]:
+        """Builds ProductAnalyticsData from persisted workspace analytics rollups when available."""
+        if not rollups:
+            return None
+
+        latest = rollups[-1]
+        search_terms = [
+            t.lower()
+            for t in ([group.title] + list(getattr(group, "common_themes", []) or []))
+            if isinstance(t, str) and len(t.strip()) >= 3
+        ]
+
+        matched_feature = None
+        all_feature_metrics = []
+        if latest.ingested_metrics and latest.ingested_metrics.feature_metrics:
+            all_feature_metrics.extend(latest.ingested_metrics.feature_metrics)
+        if latest.feature_metrics:
+            all_feature_metrics.extend(latest.feature_metrics)
+
+        for fm in all_feature_metrics:
+            fm_name = (getattr(fm, "name", "") or "").lower()
+            if not fm_name:
+                continue
+            if any(
+                term in fm_name or fm_name in term or any(w in fm_name for w in term.split() if len(w) > 3)
+                for term in search_terms
+            ):
+                matched_feature = fm
+                break
+
+        drop_off_rate = None
+        if latest.funnel_metrics:
+            drop_rates = [
+                float(f.drop_off_rate)
+                for f in latest.funnel_metrics
+                if getattr(f, "drop_off_rate", None) is not None and f.drop_off_rate > 0
+            ]
+            if drop_rates:
+                drop_off_rate = round(max(drop_rates), 2)
+
+        trend_dir = (
+            "increasing"
+            if len(rollups) >= 2 and (rollups[-1].total_events >= rollups[0].total_events)
+            else "stable"
+        )
+
+        if matched_feature is not None:
+            active_users = getattr(matched_feature, "unique_users", None)
+            if active_users is None and latest.ingested_metrics:
+                active_users = latest.ingested_metrics.active_users
+            if active_users is None:
+                active_users = latest.active_users
+            adoption_rate = getattr(matched_feature, "adoption_percent", None)
+            event_count = getattr(matched_feature, "event_count", None)
+            return ProductAnalyticsData(
+                feature_usage_frequency=float(event_count) if event_count is not None else None,
+                active_users=int(active_users) if active_users is not None else None,
+                adoption_rate=float(adoption_rate) if adoption_rate is not None else None,
+                drop_off_rate=drop_off_rate,
+                trend_direction=trend_dir,
+                is_available=True,
+            )
+
+        active_users = latest.active_users or (latest.ingested_metrics.active_users if latest.ingested_metrics else 0)
+        total_events = latest.total_events or (latest.ingested_metrics.total_events if latest.ingested_metrics else 0)
+        if not active_users and not total_events:
+            return None
+
+        adoptions = [
+            float(fm.adoption_percent)
+            for fm in all_feature_metrics
+            if getattr(fm, "adoption_percent", None) is not None
+        ]
+        avg_adoption = round(sum(adoptions) / len(adoptions), 2) if adoptions else None
+
+        return ProductAnalyticsData(
+            feature_usage_frequency=float(total_events) if total_events else None,
+            active_users=int(active_users) if active_users else None,
+            adoption_rate=avg_adoption,
+            drop_off_rate=drop_off_rate,
+            trend_direction=trend_dir,
+            is_available=True,
+        )
+
+    async def _resolve_analytics_data_for_group(
+        self,
+        group: FeatureGroup,
+        request: AnalyzePrioritizationRequest,
+        rollups_cache: Optional[List[AnalyticsDailyRollup]],
+    ) -> Optional[ProductAnalyticsData]:
+        """Resolves verified product analytics from request overrides, evidence, or persisted MongoDB rollups."""
+        group_id_str = str(group.id)
+
+        if request.analytics_data and group_id_str in request.analytics_data:
+            candidate = request.analytics_data[group_id_str]
+            if candidate and candidate.is_available:
+                return candidate
+
+        if request.usage_analytics_evidence and isinstance(request.usage_analytics_evidence, dict):
+            evidence = request.usage_analytics_evidence
+            if group_id_str in evidence:
+                coerced = self._coerce_analytics_evidence(evidence[group_id_str])
+                if coerced:
+                    return coerced
+            coerced = self._coerce_analytics_evidence(evidence)
+            if coerced:
+                return coerced
+
+        if rollups_cache:
+            return self._extract_analytics_from_rollups(group, rollups_cache)
+
+        return None
+
     async def analyze_prioritization(
         self,
         request: AnalyzePrioritizationRequest,
@@ -217,13 +365,31 @@ class PrioritizationService:
                 },
             )
 
+        rollups_cache: Optional[List[AnalyticsDailyRollup]] = None
+        if self.analytics_rollup_repo and not request.analytics_data and not request.usage_analytics_evidence:
+            try:
+                rollups_cache = await self.analytics_rollup_repo.find_by_workspace(
+                    ws_oid,
+                    sort=[("date", 1)],
+                    limit=30,
+                )
+            except Exception as exc:
+                logger.warning("Failed to query analytics rollups for workspace %s: %s", request.workspace_id, exc)
+                rollups_cache = None
+
+        resolved_strategic_ctx = request.strategic_context
+        if resolved_strategic_ctx is None and request.strategic_alignment_context:
+            resolved_strategic_ctx = StrategicContext(
+                primary_business_goals=[request.strategic_alignment_context],
+            )
+
         results: List[PrioritizationResult] = []
 
         for group in target_groups:
             group_id_str = str(group.id)
 
             # Check if an active result already exists (unless force_reanalyze is True)
-            if not request.force_reanalyze and self.prioritization_repo:
+            if not (request.force_reanalyze or request.force_recalculate) and self.prioritization_repo:
                 existing_scenario = await self.prioritization_repo.find_by_workspace_and_feature_group(
                     workspace_id=ws_oid,
                     feature_group_id=group.id,
@@ -260,9 +426,11 @@ class PrioritizationService:
             sentiment_score = compute_sentiment_score(sentiment_dist)
 
             # Factor: Usage Impact (0-100 or None)
-            analytics_data = None
-            if request.analytics_data and group_id_str in request.analytics_data:
-                analytics_data = request.analytics_data[group_id_str]
+            analytics_data = await self._resolve_analytics_data_for_group(
+                group=group,
+                request=request,
+                rollups_cache=rollups_cache,
+            )
             usage_impact_score = compute_usage_impact_score(analytics_data)
 
             # 3. Invoke LLM for qualitative evaluation (Business Impact & Strategic Alignment)
@@ -279,7 +447,7 @@ class PrioritizationService:
                 unique_customer_count=unique_customer_count,
                 urgency_dist=urgency_dist,
                 sentiment_dist=sentiment_dist,
-                strategic_context=request.strategic_context,
+                strategic_context=resolved_strategic_ctx,
                 analytics_data=analytics_data,
             )
 

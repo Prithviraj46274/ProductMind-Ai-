@@ -25,10 +25,14 @@ import {
   Layers,
   ExternalLink,
   MessageSquareText,
+  Loader2,
+  Brain,
+  Quote,
 } from 'lucide-react'
 import { Card, Badge, Button, Modal, DemoModeBanner, AIClassificationCard } from '../components/common'
-import { generateSmartTags, detectDuplicates, analyzeSentiment, predictCategory } from '../services/aiSimulationService'
 import { parseFeedbackCSV, generateSampleCSV, exportFeedbackToCSV } from '../services/csvService'
+import { feedbackService } from '../services/api/feedbackService'
+import { useWorkspace } from '../context/WorkspaceContext'
 import { InsightsPage } from './InsightsPage'
 
 export function FeedbackPage() {
@@ -79,7 +83,12 @@ export function FeedbackPage() {
   // Modal states
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [editingItem, setEditingItem] = useState(null)
+  const { currentWorkspace } = useWorkspace()
   const [inspectingFeedbackItem, setInspectingFeedbackItem] = useState(null)
+  const [aiAnalysis, setAiAnalysis] = useState(null)
+  const [isLoadingAnalysis, setIsLoadingAnalysis] = useState(false)
+  const [analysisError, setAnalysisError] = useState(null)
+  const [isBatchAnalyzing, setIsBatchAnalyzing] = useState(false)
   const [showCSVModal, setShowCSVModal] = useState(false)
   const [showDuplicateWarning, setShowDuplicateWarning] = useState(null) // holds matched duplicates
 
@@ -104,17 +113,9 @@ export function FeedbackPage() {
   const sentiments = ['All', 'Positive', 'Neutral', 'Negative']
   const priorities = ['All', 'Urgent', 'High', 'Medium', 'Low']
 
-  // Handle Smart Tagging & auto-prediction during typing
+  // Update title
   const handleTitleChange = (val) => {
     setFormTitle(val)
-    if (!editingItem && val.length > 5) {
-      const predictedCat = predictCategory(val)
-      setFormCategory(predictedCat)
-      const predictedSent = analyzeSentiment(val)
-      setFormSentiment(predictedSent)
-      const tags = generateSmartTags(val, formDescription)
-      setFormTags(tags)
-    }
   }
 
   // Filtered and Sorted list
@@ -177,8 +178,53 @@ export function FeedbackPage() {
   // Active filters count
   const hasActiveFilters = searchTerm || selectedCategory !== 'All' || selectedSentiment !== 'All' || selectedPriority !== 'All' || linkedFilter !== 'all'
 
-  // Submit Feedback (with duplicate detection check)
-  const handleSaveFeedback = (forceProceed = false) => {
+  // Open Inspect and load AI Intelligence
+  const handleOpenInspect = async (item) => {
+    setInspectingFeedbackItem(item)
+    setAiAnalysis(item.analysis || null)
+    setAnalysisError(null)
+
+    if (item.id) {
+      try {
+        const cached = await feedbackService.getFeedbackAnalysis(item.id)
+        if (cached?.analysis) {
+          setAiAnalysis(cached.analysis)
+        }
+      } catch {
+        // Not analyzed yet
+      }
+    }
+  }
+
+  // Trigger real Feedback Intelligence Agent analysis
+  const handleRunAIAnalysis = async (force = true) => {
+    if (!inspectingFeedbackItem?.id) return
+    setIsLoadingAnalysis(true)
+    setAnalysisError(null)
+    try {
+      const res = await feedbackService.analyzeFeedback(inspectingFeedbackItem.id, force)
+      if (res?.analysis) {
+        setAiAnalysis(res.analysis)
+        // Also update local feedback item with new category/sentiment
+        updateFeedback(inspectingFeedbackItem.id, {
+          category: res.analysis.category,
+          sentiment: res.analysis.sentiment,
+          priority: res.analysis.urgency === 'Critical' ? 'Urgent' : res.analysis.urgency,
+          analysis: res.analysis,
+        })
+        addToast('Feedback Intelligence analysis complete!', 'success')
+      }
+    } catch (err) {
+      const msg = err?.message || 'AI analysis request failed'
+      setAnalysisError(msg)
+      addToast(msg, 'error')
+    } finally {
+      setIsLoadingAnalysis(false)
+    }
+  }
+
+  // Submit Feedback
+  const handleSaveFeedback = async (forceProceed = false) => {
     if (!formTitle.trim()) {
       addToast('Please provide a feedback title', 'warning')
       return
@@ -186,7 +232,9 @@ export function FeedbackPage() {
 
     // Check duplicates if creating new
     if (!editingItem && !forceProceed) {
-      const duplicates = detectDuplicates(formTitle, formDescription, feedback)
+      const duplicates = feedback.filter(
+        f => f.title.toLowerCase().trim() === formTitle.toLowerCase().trim()
+      )
       if (duplicates.length > 0) {
         setShowDuplicateWarning(duplicates)
         return
@@ -203,12 +251,13 @@ export function FeedbackPage() {
       priority: formPriority,
       tags: formTags.length > 0 ? formTags : ['general'],
       linkedFeatureId: formLinkedFeatureId || null,
+      workspaceId: currentWorkspace?.id,
     }
 
     if (editingItem) {
       updateFeedback(editingItem.id, payload)
     } else {
-      addFeedback(payload)
+      await addFeedback(payload)
     }
 
     setShowCreateModal(false)
@@ -599,7 +648,7 @@ export function FeedbackPage() {
                       <td className="py-3 px-4 max-w-sm">
                         <div className="flex flex-col">
                           <button
-                            onClick={() => setInspectingFeedbackItem(item)}
+                            onClick={() => handleOpenInspect(item)}
                             className="font-bold text-slate-900 dark:text-white line-clamp-1 text-left hover:text-brand-600 dark:hover:text-brand-400 cursor-pointer"
                             title="Click to view full detail and AI classification"
                           >
@@ -655,7 +704,7 @@ export function FeedbackPage() {
                       <td className="py-3 px-4 text-right">
                         <div className="flex items-center justify-end gap-1">
                           <button
-                            onClick={() => setInspectingFeedbackItem(item)}
+                            onClick={() => handleOpenInspect(item)}
                             className="p-1 text-slate-400 hover:text-brand-600 dark:hover:text-brand-400 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800"
                             title="Inspect AI Classification & Traceability"
                           >
@@ -693,7 +742,12 @@ export function FeedbackPage() {
               <Card key={item.id} className="p-4 flex flex-col justify-between" hover>
                 <div>
                   <div className="flex items-start justify-between gap-2">
-                    <h4 className="text-sm font-bold text-slate-900 dark:text-white line-clamp-1">{item.title}</h4>
+                    <button
+                      onClick={() => handleOpenInspect(item)}
+                      className="text-sm font-bold text-slate-900 dark:text-white line-clamp-1 text-left hover:text-brand-600 dark:hover:text-brand-400 cursor-pointer"
+                    >
+                      {item.title}
+                    </button>
                     <Badge variant={item.priority === 'Urgent' ? 'danger' : item.priority === 'High' ? 'warning' : 'default'}>
                       {item.priority}
                     </Badge>
@@ -1069,14 +1123,107 @@ export function FeedbackPage() {
               <p>{inspectingFeedbackItem.description}</p>
             </div>
 
+            {/* AI Analysis Trigger Header */}
+            <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-navy-950 border border-slate-200 dark:border-slate-800">
+              <div className="flex items-center gap-2">
+                <Brain className="w-4 h-4 text-brand-600 dark:text-brand-400" />
+                <span className="text-xs font-bold text-slate-900 dark:text-white">
+                  Feedback Intelligence Agent
+                </span>
+              </div>
+              <Button
+                variant="primary"
+                size="xs"
+                disabled={isLoadingAnalysis}
+                onClick={() => handleRunAIAnalysis(Boolean(aiAnalysis))}
+                icon={isLoadingAnalysis ? Loader2 : Sparkles}
+              >
+                {isLoadingAnalysis
+                  ? 'Analyzing with AI...'
+                  : aiAnalysis
+                  ? 'Re-analyze with AI'
+                  : 'Analyze with AI'}
+              </Button>
+            </div>
+
+            {analysisError && (
+              <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900 text-rose-600 dark:text-rose-400 text-xs">
+                {analysisError}
+              </div>
+            )}
+
             {/* AI Classification Card Component */}
             <AIClassificationCard
-              category={inspectingFeedbackItem.category}
-              sentiment={inspectingFeedbackItem.sentiment}
-              themes={inspectingFeedbackItem.tags || []}
-              confidence={0.94}
-              status="completed"
+              category={aiAnalysis?.category || inspectingFeedbackItem.category}
+              sentiment={aiAnalysis?.sentiment || inspectingFeedbackItem.sentiment}
+              themes={aiAnalysis?.secondary_tags || aiAnalysis?.subthemes || inspectingFeedbackItem.tags || []}
+              confidence={aiAnalysis?.confidence ?? 0.92}
+              status={isLoadingAnalysis ? 'processing' : aiAnalysis ? 'completed' : 'pending'}
             />
+
+            {/* Grounded AI Analysis Findings */}
+            {aiAnalysis && (
+              <div className="space-y-3">
+                {/* Pain Point & Suggested Action */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                  <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-900 dark:text-amber-200">
+                    <span className="text-[10px] font-bold uppercase tracking-wider block text-amber-600 dark:text-amber-400 mb-1">
+                      Customer Pain Point
+                    </span>
+                    <p>{aiAnalysis.customer_pain_point}</p>
+                  </div>
+
+                  <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-900 dark:text-emerald-200">
+                    <span className="text-[10px] font-bold uppercase tracking-wider block text-emerald-600 dark:text-emerald-400 mb-1">
+                      Recommended Action
+                    </span>
+                    <p>{aiAnalysis.suggested_action}</p>
+                  </div>
+                </div>
+
+                {/* Urgency & Urgency Explanation */}
+                {aiAnalysis.urgency && (
+                  <div className="p-3 rounded-xl bg-slate-50 dark:bg-navy-950/60 border border-slate-200 dark:border-slate-800 text-xs">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                        Operational Urgency:
+                      </span>
+                      <Badge
+                        variant={
+                          aiAnalysis.urgency === 'Critical' || aiAnalysis.urgency === 'High'
+                            ? 'danger'
+                            : 'warning'
+                        }
+                      >
+                        {aiAnalysis.urgency}
+                      </Badge>
+                    </div>
+                    {aiAnalysis.urgency_explanation && (
+                      <p className="text-slate-600 dark:text-slate-400 mt-1">
+                        {aiAnalysis.urgency_explanation}
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {/* Grounded Evidence Excerpts */}
+                {aiAnalysis.evidence && aiAnalysis.evidence.length > 0 && (
+                  <div className="p-3 rounded-xl bg-slate-50 dark:bg-navy-950/60 border border-slate-200 dark:border-slate-800 text-xs space-y-1.5">
+                    <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                      <Quote className="w-3 h-3 text-brand-500" />
+                      <span>Grounded Evidence Excerpts</span>
+                    </div>
+                    <ul className="list-disc list-inside space-y-1 text-slate-700 dark:text-slate-300 italic">
+                      {aiAnalysis.evidence.map((quote, idx) => (
+                        <li key={idx} className="line-clamp-2">
+                          &ldquo;{quote}&rdquo;
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Traceability & Navigation to Downstream Artifacts */}
             <div className="p-3.5 rounded-xl bg-brand-50/50 dark:bg-brand-950/30 border border-brand-200/60 dark:border-brand-800/60 text-xs space-y-2">

@@ -185,6 +185,7 @@ class FeatureIntelligenceService:
                 "min_group_size": min_group_size,
             },
             temperature=0.1,
+            max_output_tokens=800,
         )
 
         agent_output = agent_exec.data

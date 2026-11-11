@@ -30,6 +30,15 @@ import {
   BarChart3,
 } from 'lucide-react'
 import { exportFeedbackToCSV, exportFeaturesToCSV } from '../services/csvService'
+import { orchestratorService } from '../services/api/orchestratorService'
+import { useWorkspace } from '../context/WorkspaceContext'
+import {
+  Brain,
+  CheckCircle,
+  Clock,
+  ArrowRight,
+  Loader2,
+} from 'lucide-react'
 import {
   ResponsiveContainer,
   AreaChart,
@@ -64,10 +73,33 @@ export function DashboardPage() {
     setDashboardLayout,
   } = useApp()
 
+  const { currentWorkspace } = useWorkspace()
   const [searchParams] = useSearchParams()
   const [timeRange, setTimeRange] = useState('30d')
   const [showCustomizeModal, setShowCustomizeModal] = useState(false)
   const [showReportModal, setShowReportModal] = useState(() => searchParams.get('report') === 'true')
+  const [showOrchestratorModal, setShowOrchestratorModal] = useState(false)
+  const [isExecutingPipeline, setIsExecutingPipeline] = useState(false)
+  const [pipelineRun, setPipelineRun] = useState(null)
+  const [pipelineError, setPipelineError] = useState(null)
+
+  const handleRunOrchestrator = async (mode = 'complete') => {
+    if (!currentWorkspace?.id) return
+    setIsExecutingPipeline(true)
+    setPipelineError(null)
+
+    try {
+      const res = await orchestratorService.runPipeline({
+        workspaceId: currentWorkspace.id,
+        mode,
+      })
+      setPipelineRun(res)
+    } catch (err) {
+      setPipelineError(err?.message || 'Pipeline execution encountered an error')
+    } finally {
+      setIsExecutingPipeline(false)
+    }
+  }
 
   const handleExportFeedbackCSV = () => {
     const csv = exportFeedbackToCSV(filteredFeedback)
@@ -242,6 +274,16 @@ export function DashboardPage() {
             <option value="quarter">Current Quarter (Q4)</option>
             <option value="all">All-Time Cumulative</option>
           </select>
+
+          {/* Quick Action: AI Orchestrator Pipeline */}
+          <button
+            onClick={() => setShowOrchestratorModal(true)}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gradient-to-r from-brand-600 via-indigo-600 to-purple-600 hover:from-brand-500 hover:to-indigo-500 text-white text-xs font-bold shadow-md hover:shadow-glow-sm transition-all cursor-pointer"
+            title="Launch 4-Stage Autonomous AI Pipeline"
+          >
+            <Brain className="w-3.5 h-3.5 text-white" />
+            <span>AI Orchestrator</span>
+          </button>
 
           {/* Quick Action: Customize Dashboard */}
           <button
@@ -753,6 +795,179 @@ export function DashboardPage() {
 
           <div className="pt-2 border-t border-slate-200 dark:border-slate-800 flex justify-end">
             <Button variant="secondary" onClick={() => setShowReportModal(false)}>Close</Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* AI Orchestrator 4-Stage Pipeline Modal */}
+      <Modal
+        isOpen={showOrchestratorModal}
+        onClose={() => setShowOrchestratorModal(false)}
+        title="Autonomous AI Orchestrator Pipeline"
+        subtitle={`Execute complete 4-stage product workflow for workspace: ${currentWorkspace?.name || 'Active'}`}
+        maxWidth="max-w-2xl"
+      >
+        <div className="space-y-4">
+          <p className="text-xs text-slate-600 dark:text-slate-300">
+            The AI Orchestrator autonomously chains all four specialist agents sequentially:
+          </p>
+
+          {/* 4 Pipeline Stages Visualization */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {/* Stage 1 */}
+            <div className={`p-3 rounded-xl border text-xs transition-all ${
+              pipelineRun?.completed_stages?.includes('feedback_intelligence') || pipelineRun?.results?.feedback
+                ? 'bg-emerald-50/60 dark:bg-emerald-950/30 border-emerald-300 dark:border-emerald-800 text-emerald-900 dark:text-emerald-200'
+                : isExecutingPipeline
+                ? 'bg-amber-50/60 dark:bg-amber-950/30 border-amber-300 dark:border-amber-800'
+                : 'bg-slate-50 dark:bg-navy-950 border-slate-200 dark:border-slate-800'
+            }`}>
+              <div className="flex items-center justify-between mb-1">
+                <span className="font-bold text-[10px] uppercase tracking-wider text-slate-400">Stage 1</span>
+                {pipelineRun?.completed_stages?.includes('feedback_intelligence') || pipelineRun?.results?.feedback ? (
+                  <CheckCircle className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                ) : isExecutingPipeline ? (
+                  <Loader2 className="w-4 h-4 text-amber-500 animate-spin" />
+                ) : (
+                  <Clock className="w-4 h-4 text-slate-400" />
+                )}
+              </div>
+              <div className="font-semibold text-slate-900 dark:text-white">Feedback Intelligence</div>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                Classifies customer sentiment, calculates urgency, extracts pain points & quotes.
+              </p>
+            </div>
+
+            {/* Stage 2 */}
+            <div className={`p-3 rounded-xl border text-xs transition-all ${
+              pipelineRun?.completed_stages?.includes('feature_intelligence') || pipelineRun?.results?.features
+                ? 'bg-emerald-50/60 dark:bg-emerald-950/30 border-emerald-300 dark:border-emerald-800 text-emerald-900 dark:text-emerald-200'
+                : 'bg-slate-50 dark:bg-navy-950 border-slate-200 dark:border-slate-800'
+            }`}>
+              <div className="flex items-center justify-between mb-1">
+                <span className="font-bold text-[10px] uppercase tracking-wider text-slate-400">Stage 2</span>
+                {pipelineRun?.completed_stages?.includes('feature_intelligence') || pipelineRun?.results?.features ? (
+                  <CheckCircle className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                ) : (
+                  <Clock className="w-4 h-4 text-slate-400" />
+                )}
+              </div>
+              <div className="font-semibold text-slate-900 dark:text-white">Feature Intelligence</div>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                Clusters similar requests, aggregates demand counts & customer reach.
+              </p>
+            </div>
+
+            {/* Stage 3 */}
+            <div className={`p-3 rounded-xl border text-xs transition-all ${
+              pipelineRun?.completed_stages?.includes('prioritization') || pipelineRun?.results?.prioritization
+                ? 'bg-emerald-50/60 dark:bg-emerald-950/30 border-emerald-300 dark:border-emerald-800 text-emerald-900 dark:text-emerald-200'
+                : 'bg-slate-50 dark:bg-navy-950 border-slate-200 dark:border-slate-800'
+            }`}>
+              <div className="flex items-center justify-between mb-1">
+                <span className="font-bold text-[10px] uppercase tracking-wider text-slate-400">Stage 3</span>
+                {pipelineRun?.completed_stages?.includes('prioritization') || pipelineRun?.results?.prioritization ? (
+                  <CheckCircle className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                ) : (
+                  <Clock className="w-4 h-4 text-slate-400" />
+                )}
+              </div>
+              <div className="font-semibold text-slate-900 dark:text-white">Prioritization Engine</div>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                Scores features on 0–100 scale using 6-factor composite model with LLM rationale.
+              </p>
+            </div>
+
+            {/* Stage 4 */}
+            <div className={`p-3 rounded-xl border text-xs transition-all ${
+              pipelineRun?.completed_stages?.includes('product_planning') || pipelineRun?.results?.planning
+                ? 'bg-emerald-50/60 dark:bg-emerald-950/30 border-emerald-300 dark:border-emerald-800 text-emerald-900 dark:text-emerald-200'
+                : 'bg-slate-50 dark:bg-navy-950 border-slate-200 dark:border-slate-800'
+            }`}>
+              <div className="flex items-center justify-between mb-1">
+                <span className="font-bold text-[10px] uppercase tracking-wider text-slate-400">Stage 4</span>
+                {pipelineRun?.completed_stages?.includes('product_planning') || pipelineRun?.results?.planning ? (
+                  <CheckCircle className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                ) : (
+                  <Clock className="w-4 h-4 text-slate-400" />
+                )}
+              </div>
+              <div className="font-semibold text-slate-900 dark:text-white">Product Planning (PRD)</div>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                Generates 13-section PRD, user stories, and acceptance criteria in Pending Review state.
+              </p>
+            </div>
+          </div>
+
+          {pipelineError && (
+            <div className="p-3.5 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900 text-rose-600 dark:text-rose-400 text-xs">
+              {pipelineError}
+            </div>
+          )}
+
+          {pipelineRun && (
+            <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-navy-950 border border-slate-200 dark:border-slate-800 text-xs space-y-2">
+              <div className="flex items-center justify-between text-slate-600 dark:text-slate-400 font-mono text-[11px]">
+                <span>Status: <strong className="text-emerald-600 dark:text-emerald-400 uppercase">{pipelineRun.status}</strong></span>
+                {pipelineRun.execution_time_seconds && (
+                  <span>Execution Time: {pipelineRun.execution_time_seconds.toFixed(2)}s</span>
+                )}
+              </div>
+              <div className="flex items-center gap-2 pt-1 border-t border-slate-200 dark:border-slate-800">
+                <Button
+                  size="xs"
+                  variant="outline"
+                  icon={ArrowRight}
+                  onClick={() => {
+                    setShowOrchestratorModal(false)
+                    navigate('/aggregation')
+                  }}
+                >
+                  View Feature Groups
+                </Button>
+                <Button
+                  size="xs"
+                  variant="outline"
+                  icon={ArrowRight}
+                  onClick={() => {
+                    setShowOrchestratorModal(false)
+                    navigate('/prioritization')
+                  }}
+                >
+                  View Prioritization
+                </Button>
+                <Button
+                  size="xs"
+                  variant="outline"
+                  icon={ArrowRight}
+                  onClick={() => {
+                    setShowOrchestratorModal(false)
+                    navigate('/prd-generator')
+                  }}
+                >
+                  View PRDs
+                </Button>
+              </div>
+            </div>
+          )}
+
+          <div className="pt-3 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between">
+            <span className="text-[11px] text-slate-400">
+              Target Workspace: {currentWorkspace?.name || 'Active'}
+            </span>
+            <div className="flex items-center gap-2">
+              <Button variant="secondary" onClick={() => setShowOrchestratorModal(false)}>
+                Close
+              </Button>
+              <Button
+                variant="electric"
+                disabled={isExecutingPipeline}
+                icon={isExecutingPipeline ? Loader2 : Brain}
+                onClick={() => handleRunOrchestrator('complete')}
+              >
+                {isExecutingPipeline ? 'Executing 4 Stages...' : 'Execute Complete Pipeline'}
+              </Button>
+            </div>
           </div>
         </div>
       </Modal>

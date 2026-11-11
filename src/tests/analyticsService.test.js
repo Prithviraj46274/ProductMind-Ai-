@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { analyticsService, DEMO_ANALYTICS_DATASET } from '../services/api/analyticsService'
 
 describe('Product Analytics Ingestion and KPI Service', () => {
@@ -86,10 +86,28 @@ u2,feature_click,Export CSV,2026-10-19T14:00:00Z,s4
     expect(all.length).toBe(2)
   })
 
-  it('clearly identifies demo dataset as demo data', async () => {
+  it('uses backend analytics overview when configured and computes demo dataset KPIs accurately', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      headers: { get: () => 'application/json' },
+      json: async () => ({
+        activeUsers: 42,
+        totalEvents: 500,
+        totalSessions: 120,
+      }),
+    })
+
     const res = await analyticsService.getOverviewMetrics({ timeRange: '30d' })
     expect(res.success).toBe(true)
-    expect(res.isDemo).toBe(true)
+    expect(res.isDemo).toBe(false)
     expect(res.data.activeUsers).toBeGreaterThan(0)
+    expect(res.data.activeUsers).toBe(42)
+    fetchSpy.mockRestore()
+
+    const filteredDemo = analyticsService.filterByTimeRange(DEMO_ANALYTICS_DATASET, '30d')
+    const demoKpis = analyticsService.calculateKPIs(filteredDemo)
+    expect(DEMO_ANALYTICS_DATASET.length).toBeGreaterThan(0)
+    expect(demoKpis.activeUsers).toBeGreaterThan(0)
   })
 })

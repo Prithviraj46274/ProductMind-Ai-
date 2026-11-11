@@ -29,7 +29,7 @@ from app.ai.orchestrator.state import PipelineExecutionState
 from app.ai.agents.feedback_intelligence.service import FeedbackIntelligenceService
 from app.ai.agents.feature_intelligence.service import FeatureIntelligenceService
 from app.ai.agents.prioritization.service import PrioritizationService
-from app.ai.agents.prioritization.schemas import AnalyzePrioritizationRequest
+from app.ai.agents.prioritization.schemas import AnalyzePrioritizationRequest, StrategicContext
 from app.ai.agents.product_planning.service import ProductPlanningService
 from app.ai.agents.product_planning.schemas import GenerateProductPlanRequest
 from app.repositories import (
@@ -288,10 +288,17 @@ class PipelineCoordinator:
             state.mark_stage_started(StageType.PRIORITIZATION)
             try:
                 target_fg_ids = current_feature_group_ids if current_feature_group_ids else None
+                prio_strategic_context = None
+                if request.strategic_context is not None:
+                    prio_strategic_context = StrategicContext(
+                        primary_business_goals=list(request.strategic_context.business_goals or []),
+                        target_customer_segments=list(request.strategic_context.target_customer_segments or []),
+                        current_quarter_okrs=list(request.strategic_context.current_quarter_objectives or []),
+                    )
                 p_request = AnalyzePrioritizationRequest(
                     workspace_id=request.workspace_id,
                     feature_group_ids=target_fg_ids,
-                    strategic_context=request.strategic_context,
+                    strategic_context=prio_strategic_context,
                     strategic_alignment_context=request.strategic_alignment_context,
                     usage_analytics_evidence=request.usage_analytics_evidence,
                     force_reanalyze=request.force_recalculate_prioritization,

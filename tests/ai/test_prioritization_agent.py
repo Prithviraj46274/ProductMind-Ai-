@@ -346,3 +346,195 @@ async def test_prioritization_agent_execution(mock_llm_service):
     assert len(result.data.implementation_benefits) == 2
     assert len(result.data.delay_risks) == 1
     mock_llm_service.ainvoke_structured.assert_called_once()
+
+
+def test_prioritization_output_key_normalization():
+    """
+    Verifies that PrioritizationAgentOutput normalizes diverse LLM-generated key formats:
+    - Title_Case_With_Underscores (e.g. Qwen style)
+    - PascalCase
+    - camelCase
+    - Preserves canonical snake_case
+    - Preserves unknown extra keys
+    """
+    # 1. Title_Case_With_Underscores (as produced by reasoning models)
+    title_underscore_payload = {
+        "Feature_Group_ID": "fg_qwen_1",
+        "Business_Impact_Score": 75.0,
+        "Business_Impact_Explanation": "Direct commercial value for retention.",
+        "Strategic_Alignment_Score": 80.0,
+        "Strategic_Alignment_Explanation": "Matches product roadmap for enterprise tier.",
+        "Customer_Pain_Point_Severity": "High friction workflow blocker.",
+        "Product_Opportunity": "Competitive parity in target vertical.",
+        "Implementation_Benefits": ["Improved workflow speed", "Lower support costs"],
+        "Delay_Risks": ["Risk of enterprise account attrition"],
+        "Supporting_Evidence": ["Customer quotes from tickets"],
+        "Reasoning": "Strong justification based on enterprise feedback.",
+        "Extra_Metadata": "Preserved data",
+    }
+    model_obj = PrioritizationAgentOutput.model_validate(title_underscore_payload)
+    assert model_obj.feature_group_id == "fg_qwen_1"
+    assert model_obj.business_impact_score == 75.0
+    assert model_obj.strategic_alignment_score == 80.0
+    assert model_obj.customer_pain_point_severity == "High friction workflow blocker."
+    assert len(model_obj.implementation_benefits) == 2
+
+    # 2. PascalCase
+    pascal_payload = {
+        "FeatureGroupID": "fg_pascal_2",
+        "BusinessImpactScore": 65.0,
+        "BusinessImpactExplanation": "Moderate commercial utility across mid-market.",
+        "StrategicAlignmentScore": 70.0,
+        "StrategicAlignmentExplanation": "Supportive of standard core milestones.",
+        "CustomerPainPointSeverity": "Moderate recurring annoyance.",
+        "ImplementationBenefits": ["Automates manual export"],
+        "DelayRisks": ["Slight delay in quarterly audits"],
+        "Reasoning": "Sound operational improvement.",
+    }
+    obj_pascal = PrioritizationAgentOutput.model_validate(pascal_payload)
+    assert obj_pascal.feature_group_id == "fg_pascal_2"
+    assert obj_pascal.business_impact_score == 65.0
+    assert obj_pascal.strategic_alignment_score == 70.0
+
+    # 3. camelCase with 'id' shorthand
+    camel_payload = {
+        "id": "fg_camel_3",
+        "businessImpactScore": 55.0,
+        "businessImpactExplanation": "Minor efficiency gains for end users.",
+        "strategicAlignmentScore": 60.0,
+        "strategicAlignmentExplanation": "Acceptable alignment with secondary OKRs.",
+        "customerPainPointSeverity": "Low severity UX friction.",
+        "implementationBenefits": ["Better button visibility"],
+        "delayRisks": ["Low risk"],
+        "reasoning": "Standard minor enhancement.",
+    }
+    obj_camel = PrioritizationAgentOutput.model_validate(camel_payload)
+    assert obj_camel.feature_group_id == "fg_camel_3"
+    assert obj_camel.business_impact_score == 55.0
+
+    # 4. Canonical keys take precedence over non-canonical keys
+    conflict_payload = {
+        "feature_group_id": "fg_canonical",
+        "Feature_Group_ID": "fg_wrong",
+        "business_impact_score": 90.0,
+        "Business_Impact_Score": 10.0,
+        "business_impact_explanation": "Canonical value must be preserved.",
+        "strategic_alignment_score": 95.0,
+        "strategic_alignment_explanation": "Canonical explanation preserved.",
+        "customer_pain_point_severity": "Critical blocker.",
+        "implementation_benefits": ["Key benefit"],
+        "delay_risks": ["Immediate churn"],
+        "reasoning": "High priority canonical record.",
+    }
+    obj_conflict = PrioritizationAgentOutput.model_validate(conflict_payload)
+    assert obj_conflict.feature_group_id == "fg_canonical"
+    assert obj_conflict.business_impact_score == 90.0
+
+
+@pytest.mark.asyncio
+async def test_prioritization_service_resolves_six_factors_from_rollups_and_evidence(mock_llm_service):
+    """Verify PrioritizationService includes usage_impact (all 6 factors) from persisted analytics rollups or request evidence."""
+    from bson import ObjectId
+    from app.ai.agents.prioritization.schemas import AnalyzePrioritizationRequest
+    from app.ai.agents.prioritization.service import PrioritizationService
+    from app.core.enums import PlatformRole
+    from app.models.analytics import AnalyticsDailyRollup, FeatureMetric, FunnelStepMetric
+
+    ws_id = ObjectId()
+    fg_id = ObjectId()
+    fg_id_str = str(fg_id)
+
+    mock_group = MagicMock()
+    mock_group.id = fg_id
+    mock_group.workspace_id = ws_id
+    mock_group.title = "CSV Export Engine"
+    mock_group.description = "Bulk CSV export for enterprise audits"
+    mock_group.feedback_count = 4
+    mock_group.unique_customer_count = 3
+    mock_group.urgency_distribution = {"High": 3, "Medium": 1}
+    mock_group.sentiment_distribution = MagicMock(positive=0, neutral=1, negative=3)
+    mock_group.pain_points = ["Manual export takes hours"]
+    mock_group.evidence = ["Need CSV export for quarterly audit"]
+    mock_group.common_themes = ["CSV Export", "Reporting"]
+
+    rollup = AnalyticsDailyRollup(
+        workspaceId=ws_id,
+        date="2026-11-11",
+        activeUsers=250,
+        totalSessions=400,
+        totalEvents=1200,
+        featureMetrics=[
+            FeatureMetric(name="CSV Export Engine", eventCount=180, uniqueUsers=90, adoptionPercent=36.0)
+        ],
+        funnelMetrics=[
+            FunnelStepMetric(step="Export Complete", users=90, conversionRate=60.0, dropOffRate=40.0)
+        ],
+    )
+
+    mock_agent = MagicMock()
+    mock_agent.agent_id = "prioritization_agent"
+    mock_agent.aevaluate = AsyncMock(
+        return_value=AgentExecutionResult(
+            data=PrioritizationAgentOutput(
+                feature_group_id=fg_id_str,
+                business_impact_score=82.0,
+                business_impact_explanation="Strong enterprise revenue retention driver.",
+                strategic_alignment_score=85.0,
+                strategic_alignment_explanation="Aligns with Q4 enterprise reporting OKR.",
+                customer_pain_point_severity="High operational friction.",
+                implementation_benefits=["Unblocks renewals"],
+                delay_risks=["Churn risk"],
+                supporting_evidence=["Need CSV export for quarterly audit"],
+                reasoning="High demand and measurable usage impact.",
+            ),
+            metadata=AgentExecutionMetadata(
+                agent_id="prioritization_agent",
+                agent_name="Prioritization Agent",
+                agent_version="1.0.0",
+                provider="groq",
+                model="qwen/qwen3.8-27b",
+                latency_ms=100.0,
+                started_at=datetime.now(timezone.utc),
+                completed_at=datetime.now(timezone.utc),
+            ),
+        )
+    )
+
+    fg_repo = MagicMock()
+    fg_repo.find_by_workspace = AsyncMock(return_value=[mock_group])
+    rollup_repo = MagicMock()
+    rollup_repo.find_by_workspace = AsyncMock(return_value=[rollup])
+    p_repo = MagicMock()
+    p_repo.find_by_workspace_and_feature_group = AsyncMock(return_value=None)
+    p_repo.create = AsyncMock(side_effect=lambda doc: setattr(doc, "id", ObjectId()) or doc)
+
+    service = PrioritizationService(
+        agent=mock_agent,
+        prioritization_repo=p_repo,
+        feature_group_repo=fg_repo,
+        analytics_rollup_repo=rollup_repo,
+    )
+    user = MagicMock(id=ObjectId(), platform_role=PlatformRole.PLATFORM_ADMIN)
+
+    res = await service.analyze_prioritization(
+        request=AnalyzePrioritizationRequest(workspace_id=str(ws_id), force_reanalyze=True),
+        user=user,
+    )
+
+    assert res.total_evaluated == 1
+    item = res.results[0]
+    expected_keys = {
+        "customer_demand",
+        "urgency",
+        "business_impact",
+        "strategic_alignment",
+        "sentiment",
+        "usage_impact",
+    }
+    assert set(item.factor_scores.keys()) == expected_keys
+    assert item.coverage_percentage == 100.0
+    assert item.missing_data == []
+    # Verify deterministic composite score matches sum(score * weight)
+    recomputed = round(sum(item.factor_scores[k] * item.factor_weights[k] for k in expected_keys), 2)
+    assert abs(item.final_score - recomputed) <= 0.05
+

@@ -2,9 +2,11 @@ import React from 'react'
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { ThemeProvider } from './context/ThemeContext'
 import { AuthProvider } from './context/AuthContext'
+import { WorkspaceProvider } from './context/WorkspaceContext'
 import { AppProvider } from './context/AppContext'
 import { AppShell } from './components/layout/AppShell'
 import { ProtectedRoute } from './components/layout/ProtectedRoute'
+import { ErrorBoundary } from './components/common/ErrorBoundary'
 
 // Auth Pages
 import SignInPage from './pages/auth/SignInPage'
@@ -34,10 +36,12 @@ import NotFoundPage from './pages/NotFoundPage'
 
 export default function App() {
   return (
-    <ThemeProvider>
-      <AuthProvider>
-        <AppProvider>
-          <HashRouter>
+    <ErrorBoundary>
+      <ThemeProvider>
+        <AuthProvider>
+          <WorkspaceProvider>
+          <AppProvider>
+            <HashRouter>
             <Routes>
               {/* Public Authentication Routes */}
               <Route path="/signin" element={<SignInPage />} />
@@ -91,7 +95,9 @@ export default function App() {
             </Routes>
           </HashRouter>
         </AppProvider>
-      </AuthProvider>
+      </WorkspaceProvider>
+    </AuthProvider>
     </ThemeProvider>
+    </ErrorBoundary>
   )
 }
