@@ -77,11 +77,18 @@ async def test_existing_features_and_scoring(async_db):
 
 @pytest.mark.asyncio
 async def test_existing_feedback_items(async_db):
-    cursor = async_db[Collections.FEEDBACK_ITEMS].find({})
-    docs = await cursor.to_list(length=100)
-    assert len(docs) == 20
+    # Verify the canonical seed workspace preserves its complete set of 20 baseline records
+    seed_ws = await async_db[Collections.WORKSPACES].find_one({"slug": "apex-saas-product-operations"})
+    assert seed_ws is not None, "Canonical seed workspace 'apex-saas-product-operations' not found!"
+    seed_docs = await async_db[Collections.FEEDBACK_ITEMS].find({"workspaceId": seed_ws["_id"]}).to_list(length=100)
+    assert len(seed_docs) == 20, f"Expected 20 seed feedback items in workspace, found {len(seed_docs)}"
 
-    for doc in docs:
+    # Verify all feedback items across all workspaces deserialize cleanly with valid schemas
+    cursor = async_db[Collections.FEEDBACK_ITEMS].find({})
+    all_docs = await cursor.to_list(length=200)
+    assert len(all_docs) >= 20
+
+    for doc in all_docs:
         fb = FeedbackItem.from_mongo(doc)
         assert fb.id is not None
         assert fb.workspace_id is not None

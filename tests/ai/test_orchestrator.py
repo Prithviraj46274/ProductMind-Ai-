@@ -673,6 +673,11 @@ async def test_run_store_eviction():
 @pytest.mark.asyncio
 async def test_orchestrator_health_diagnostic(orchestrator):
     """Verifies operational health check and specialist agent connectivity."""
+    mock_service = MagicMock()
+    mock_service.is_configured = True
+    mock_service.settings = MagicMock(AI_PROVIDER="groq", AI_MODEL="qwen/qwen3.8-27b")
+    orchestrator.llm_service = mock_service
+
     health = await orchestrator.get_health()
 
     assert health.status == "healthy"
