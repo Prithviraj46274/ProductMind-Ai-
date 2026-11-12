@@ -7,6 +7,7 @@ partial targeted workflows, run state retrieval, and health diagnostics.
 import logging
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status
+from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from app.ai.agents.feedback_intelligence import FeedbackIntelligenceService
 from app.ai.agents.feature_intelligence import FeatureIntelligenceService
@@ -40,6 +41,7 @@ from app.ai.orchestrator.state import (
 )
 from app.api.dependencies import (
     get_current_user,
+    get_mongo_db,
     get_feedback_repository,
     get_feature_group_repository,
     get_prioritization_scenario_repository,
@@ -78,6 +80,7 @@ def get_ai_orchestrator(
     workspace_repo: WorkspaceRepository = Depends(get_workspace_repository),
     membership_repo: WorkspaceMembershipRepository = Depends(get_workspace_membership_repository),
     run_store: OrchestratorRunStore = Depends(get_orchestrator_run_store),
+    db: AsyncIOMotorDatabase = Depends(get_mongo_db),
 ) -> AIOrchestrator:
     """Dependency injector constructing the AIOrchestrator with full coordinator wiring."""
     coordinator = PipelineCoordinator(
@@ -96,6 +99,7 @@ def get_ai_orchestrator(
         workspace_repo=workspace_repo,
         membership_repo=membership_repo,
         run_store=run_store,
+        db=db,
     )
 
 

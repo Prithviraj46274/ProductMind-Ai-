@@ -40,14 +40,16 @@ class Settings:
             "http://127.0.0.1:3000",
         ]
 
-    # Database Settings
-    MONGODB_URI: str = os.getenv("MONGODB_URI", "mongodb://127.0.0.1:27017/productmind_ai")
-    DATABASE_NAME: str = os.getenv("DATABASE_NAME", "productmind_ai")
+    # Database Settings (MongoDB Atlas is the exclusive database; no local fallback)
+    MONGODB_URI: str = os.getenv("MONGODB_URI", "").strip()
+    DATABASE_NAME: str = (
+        os.getenv("DATABASE_NAME") or os.getenv("MONGODB_DATABASE") or "productmind_ai"
+    ).strip()
     
     # Connection Pool Settings
     MONGO_MAX_POOL_SIZE: int = int(os.getenv("MONGO_MAX_POOL_SIZE", "50"))
     MONGO_MIN_POOL_SIZE: int = int(os.getenv("MONGO_MIN_POOL_SIZE", "5"))
-    MONGO_SERVER_SELECTION_TIMEOUT_MS: int = int(os.getenv("MONGO_SERVER_SELECTION_TIMEOUT_MS", "5000"))
+    MONGO_SERVER_SELECTION_TIMEOUT_MS: int = int(os.getenv("MONGO_SERVER_SELECTION_TIMEOUT_MS", "10000"))
     MONGO_SOCKET_TIMEOUT_MS: int = int(os.getenv("MONGO_SOCKET_TIMEOUT_MS", "45000"))
     
     # Authentication & JWT Configuration

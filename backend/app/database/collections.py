@@ -42,6 +42,9 @@ class Collections:
     SAVED_REPORTS = "saved_reports"
     AUDIT_LOGS = "audit_logs"
 
+    # AI Orchestration Persistence (stored in Atlas alongside the 23 canonical collections)
+    ORCHESTRATOR_RUNS = "orchestrator_runs"
+
     @classmethod
     def all_collections(cls):
         """Returns all 23 collection names defined in the architecture."""

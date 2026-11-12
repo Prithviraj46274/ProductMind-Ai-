@@ -715,3 +715,55 @@ async def test_orchestrator_translates_product_strategic_context_for_prioritizat
     assert p_req.strategic_context.primary_business_goals == ["Retain enterprise accounts"]
     assert p_req.strategic_context.target_customer_segments == ["Enterprise FinOps"]
     assert p_req.strategic_context.current_quarter_okrs == ["Launch warehouse scheduler"]
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_persists_and_recovers_run_from_db(
+    coordinator, mock_workspace_repo, mock_membership_repo, mock_user
+):
+    """Verifies orchestrator run history persists to MongoDB and survives empty in-memory cache."""
+    from unittest.mock import AsyncMock
+    stored_docs = {}
+
+    class FakeCollection:
+        async def create_index(self, *args, **kwargs):
+            return "idx"
+
+        async def replace_one(self, filter_q, doc, upsert=False):
+            stored_docs[filter_q["run_id"]] = dict(doc)
+
+        async def find_one(self, filter_q):
+            return stored_docs.get(filter_q["run_id"])
+
+    fake_col = FakeCollection()
+    fake_db = MagicMock()
+    fake_db.__getitem__.return_value = fake_col
+
+    run_store = OrchestratorRunStore(capacity=10)
+    orch = AIOrchestrator(
+        coordinator=coordinator,
+        workspace_repo=mock_workspace_repo,
+        membership_repo=mock_membership_repo,
+        run_store=run_store,
+        db=fake_db,
+    )
+    request = OrchestratorRequest(
+        workspace_id=MOCK_WS_ID,
+        mode=PipelineMode.FULL,
+        feedback_ids=[MOCK_FB_ID_1, MOCK_FB_ID_2],
+    )
+    response = await orch.run_pipeline(request=request, user=mock_user)
+    assert response.run_id in stored_docs
+
+    # Simulate backend process restart with empty in-memory cache
+    restarted_orch = AIOrchestrator(
+        coordinator=coordinator,
+        workspace_repo=mock_workspace_repo,
+        membership_repo=mock_membership_repo,
+        run_store=OrchestratorRunStore(capacity=10),
+        db=fake_db,
+    )
+    recovered = await restarted_orch.get_run_by_id(response.run_id, mock_user)
+    assert recovered.run_id == response.run_id
+    assert recovered.workspace_id == MOCK_WS_ID
+    assert recovered.status == PipelineStatus.COMPLETED
