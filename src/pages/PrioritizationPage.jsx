@@ -473,6 +473,40 @@ export function PrioritizationPage() {
                       {res.explanation}
                     </p>
                   )}
+
+                  {/* Usage Analytics Evidence Explainability */}
+                  {(() => {
+                    const ue = res.agent_metadata?.usage_analytics_evidence
+                    if (ue && ue.available) {
+                      return (
+                        <div className="p-2.5 rounded-xl bg-emerald-50/60 dark:bg-emerald-950/25 border border-emerald-200/70 dark:border-emerald-800/50 text-[11px] space-y-1">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <span className="font-bold text-emerald-800 dark:text-emerald-300">
+                              Usage Analytics Evidence ({ue.matched_feature || res.group_name})
+                            </span>
+                            <span className="font-mono text-[10px] text-emerald-700 dark:text-emerald-400">
+                              Coverage: {ue.coverage_status || 'measured'} • Weight: {(Number(ue.weight_applied ?? 0.1) * 100).toFixed(1)}%
+                            </span>
+                          </div>
+                          <div className="flex flex-wrap gap-x-4 gap-y-1 text-slate-700 dark:text-slate-300 font-mono text-[10px]">
+                            <span>Events: {ue.event_count ?? 'Unavailable'}</span>
+                            <span>Unique Users: {ue.unique_users ?? 'Unavailable'}</span>
+                            <span>Adoption: {ue.adoption_rate !== null && ue.adoption_rate !== undefined ? `${ue.adoption_rate}%` : 'Unavailable'}</span>
+                            <span>Trend: {ue.trend_direction || 'stable'}</span>
+                          </div>
+                        </div>
+                      )
+                    }
+                    if (missingList.includes('usage_impact') || (ue && !ue.available)) {
+                      return (
+                        <div className="p-2.5 rounded-xl bg-amber-50/60 dark:bg-amber-950/25 border border-amber-200/70 dark:border-amber-800/50 text-[11px] text-amber-800 dark:text-amber-300">
+                          <strong>Usage Analytics Unavailable:</strong>{' '}
+                          {ue?.missing_reason || 'No matching feature usage telemetry found in workspace MongoDB Atlas rollups; 10% weight reweighted across measured factors.'}
+                        </div>
+                      )
+                    }
+                    return null
+                  })()}
                 </div>
               )
             })}

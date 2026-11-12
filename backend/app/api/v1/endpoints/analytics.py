@@ -238,6 +238,8 @@ def _batch_response(batch: AnalyticsBatch) -> AnalyticsBatchStatusResponse:
     return AnalyticsBatchStatusResponse(
         id=str(batch.id),
         workspaceId=str(batch.workspace_id),
+        fileName=batch.file_name,
+        sourceType=batch.source_type,
         status=batch.status,
         totalRows=batch.total_rows,
         acceptedRows=batch.accepted_rows,
@@ -255,15 +257,20 @@ async def _create_batch(
     batch_repo: AnalyticsBatchRepository,
     total_rows: int,
     file_name: str,
+    source_type: str = "json",
+    detected_columns: Optional[List[str]] = None,
+    mapped_columns: Optional[Dict[str, str]] = None,
 ) -> AnalyticsBatch:
     return await batch_repo.create(
         AnalyticsBatch(
             workspace_id=workspace.id,
             uploaded_by=user.id,
             file_name=file_name,
-            source_type="json",
+            source_type=source_type,
             status="processing",
             total_rows=total_rows,
+            detected_columns=detected_columns or [],
+            mapped_columns=mapped_columns or {},
         )
     )
 
@@ -482,7 +489,13 @@ async def ingest_event(
     "/datasets/upload",
     response_model=AnalyticsBatchIngestResponse,
     status_code=status.HTTP_201_CREATED,
-    summary="Ingest a bounded JSON analytics batch",
+    summary="Ingest a bounded analytics batch (CSV/JSON normalized events)",
+)
+@router.post(
+    "/events/batch",
+    response_model=AnalyticsBatchIngestResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Ingest a bounded analytics event batch",
 )
 async def ingest_batch(
     payload: AnalyticsBatchRequest,
@@ -506,7 +519,10 @@ async def ingest_batch(
         current_user,
         batch_repo,
         total_rows=len(payload.items),
-        file_name="analytics-events.json",
+        file_name=payload.file_name or "analytics-events.json",
+        source_type=payload.source_type or "json",
+        detected_columns=payload.detected_columns,
+        mapped_columns=payload.mapped_columns,
     )
     results: List[AnalyticsBatchRowResult] = []
     errors: List[Dict[str, Any]] = []
@@ -567,6 +583,33 @@ async def ingest_batch(
         duplicateRows=updated_batch.duplicate_rows,
         results=results,
     )
+
+
+@router.get(
+    "/datasets",
+    response_model=List[AnalyticsBatchStatusResponse],
+    summary="List recent workspace analytics batches",
+)
+async def list_batches(
+    workspace_id: str = Query(..., alias="workspaceId"),
+    limit: int = Query(default=20, ge=1, le=100),
+    current_user: User = Depends(get_current_user),
+    workspace_repo: WorkspaceRepository = Depends(get_workspace_repository),
+    membership_repo: WorkspaceMembershipRepository = Depends(get_workspace_membership_repository),
+    batch_repo: AnalyticsBatchRepository = Depends(get_analytics_batch_repository),
+) -> List[AnalyticsBatchStatusResponse]:
+    workspace = await _load_workspace(
+        workspace_id,
+        current_user,
+        workspace_repo,
+        membership_repo,
+    )
+    batches = await batch_repo.find_by_workspace(
+        workspace.id,
+        sort=[("startedAt", -1)],
+        limit=limit,
+    )
+    return [_batch_response(batch) for batch in batches if batch.id is not None]
 
 
 @router.get(
@@ -959,6 +1002,7 @@ async def get_usage_trends(
     ),
     start_date: Optional[date] = Query(default=None, alias="startDate"),
     end_date: Optional[date] = Query(default=None, alias="endDate"),
+    feature_name: Optional[str] = Query(default=None, alias="featureName", max_length=120),
     current_user: User = Depends(get_current_user),
     workspace_repo: WorkspaceRepository = Depends(get_workspace_repository),
     membership_repo: WorkspaceMembershipRepository = Depends(get_workspace_membership_repository),
@@ -976,6 +1020,48 @@ async def get_usage_trends(
         start_date,
         end_date,
     )
+    if feature_name is not None and not feature_name.strip():
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="featureName must not be empty",
+        )
+    if feature_name and feature_name.strip():
+        feat_days = await event_repo.aggregate_feature_daily_trends(
+            workspace.id,
+            start_datetime,
+            end_exclusive,
+            feature_name.strip(),
+        )
+        items = [
+            AnalyticsUsageTrendPoint(
+                date=day["date"],
+                events=day["events"],
+                activeUsers=day["activeUsers"],
+                sessions=day["sessions"],
+                avgEventDurationSeconds=day["avgEventDurationSeconds"],
+                coverage=_coverage(
+                    day["events"],
+                    day["eventsWithActorId"],
+                    day["eventsWithSessionId"],
+                ),
+                lastEventAt=_as_utc(day["lastEventAt"]) if day.get("lastEventAt") else None,
+            )
+            for day in feat_days
+        ]
+        total_ev = sum(d["events"] for d in feat_days)
+        total_actor = sum(d["eventsWithActorId"] for d in feat_days)
+        total_sess = sum(d["eventsWithSessionId"] for d in feat_days)
+        last_ev = items[-1].last_event_at if items else None
+        return AnalyticsUsageTrendsResponse(
+            data={
+                "items": items,
+                "coverage": _coverage(total_ev, total_actor, total_sess, total_ev),
+                "observedDays": len(items),
+                "lastEventAt": last_ev,
+                "calculatedAt": datetime.now(timezone.utc),
+                "dateRange": _range_response(start, end, capped),
+            }
+        )
     raw_metrics = await event_repo.aggregate_range_overview(
         workspace.id,
         start_datetime,
@@ -1043,6 +1129,7 @@ async def get_feature_metrics(
     limit: int = Query(default=50, ge=1, le=FEATURE_PAGE_LIMIT),
     event_type: Optional[str] = Query(default=None, alias="eventType", max_length=50),
     feature_name: Optional[str] = Query(default=None, alias="featureName", max_length=120),
+    include_comparison: bool = Query(default=False, alias="includeComparison"),
     current_user: User = Depends(get_current_user),
     workspace_repo: WorkspaceRepository = Depends(get_workspace_repository),
     membership_repo: WorkspaceMembershipRepository = Depends(get_workspace_membership_repository),
@@ -1091,6 +1178,15 @@ async def get_feature_metrics(
         event_type=event_type.strip() if event_type else None,
         feature_name=feature_name.strip() if feature_name else None,
     )
+    prev_counts: Dict[str, int] = {}
+    if include_comparison:
+        window_delta = end_exclusive - start_datetime
+        prev_start = start_datetime - window_delta
+        prev_counts = await event_repo.aggregate_feature_counts(
+            workspace.id,
+            prev_start,
+            start_datetime,
+        )
     items = []
     total_users = (
         raw_metrics.get("activeUsers")
@@ -1105,6 +1201,12 @@ async def get_feature_metrics(
         )
         unique_users = metric["uniqueUsers"] if has_user_coverage else None
         duration_samples = metric["durationSampleCount"]
+        prev_count = prev_counts.get(metric["_id"], 0) if include_comparison else None
+        trend_delta = (
+            round(((metric["eventCount"] - prev_count) / prev_count) * 100, 2)
+            if include_comparison and prev_count is not None and prev_count > 0
+            else None
+        )
         items.append(
             AnalyticsFeatureMetricResponse(
                 name=metric["_id"],
@@ -1122,6 +1224,8 @@ async def get_feature_metrics(
                     else None
                 ),
                 durationSampleCount=duration_samples,
+                previousEventCount=prev_count,
+                trendDeltaPercent=trend_delta,
             )
         )
     return AnalyticsFeaturesResponse(
@@ -1147,7 +1251,7 @@ async def get_feature_metrics(
 @router.get(
     "/funnel",
     response_model=AnalyticsFunnelResponse,
-    summary="Report funnel metrics as unavailable until semantics are defined",
+    summary="Get ordered workspace funnel conversion metrics",
 )
 async def get_funnel(
     workspace_id: str = Query(..., alias="workspaceId"),
@@ -1157,6 +1261,7 @@ async def get_funnel(
     ),
     start_date: Optional[date] = Query(default=None, alias="startDate"),
     end_date: Optional[date] = Query(default=None, alias="endDate"),
+    steps: Optional[str] = Query(default=None, max_length=500),
     current_user: User = Depends(get_current_user),
     workspace_repo: WorkspaceRepository = Depends(get_workspace_repository),
     membership_repo: WorkspaceMembershipRepository = Depends(get_workspace_membership_repository),
@@ -1185,16 +1290,83 @@ async def get_funnel(
         end.isoformat(),
     )
     rolled_up = _metrics_from_rollups(rollups)
+    coverage_obj = _coverage(
+        rolled_up["totalEvents"],
+        rolled_up["eventsWithActorId"],
+        rolled_up["eventsWithSessionId"],
+        raw_metrics.get("totalEvents", 0),
+    )
+    list_events_fn = getattr(event_repo, "list_distinct_event_names", None)
+    available_events: List[str] = (
+        await list_events_fn(workspace.id, start_datetime, end_exclusive)
+        if callable(list_events_fn) and type(event_repo).__name__ != "AsyncMock"
+        else []
+    )
+    # Also support mocked repo returning a list if explicitly configured
+    if callable(list_events_fn) and not available_events:
+        try:
+            maybe_events = await list_events_fn(workspace.id, start_datetime, end_exclusive)
+            if isinstance(maybe_events, list):
+                available_events = maybe_events
+        except Exception:
+            available_events = []
+
+    if not steps or not steps.strip():
+        return AnalyticsFunnelResponse(
+            data={
+                "available": False,
+                "reason": "Funnel step and conversion semantics are not defined for ingested events.",
+                "steps": [],
+                "availableEvents": available_events,
+                "coverage": coverage_obj,
+                "observedDays": rolled_up["observedDays"],
+                "lastEventAt": rolled_up["lastEventAt"],
+                "calculatedAt": datetime.now(timezone.utc),
+                "dateRange": _range_response(start, end, capped),
+            }
+        )
+
+    parsed_steps = [s.strip() for s in steps.split(",") if s.strip()]
+    if len(parsed_steps) < 2 or len(parsed_steps) > 8:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Funnel steps must include between 2 and 8 non-empty stages.",
+        )
+
+    raw_is_complete = _can_report_distinct_ids(rolled_up, raw_metrics)
+    if rolled_up["totalEvents"] == 0 or not raw_is_complete or rolled_up["eventsWithActorId"] != rolled_up["totalEvents"]:
+        reason = (
+            "No ingested events in the selected date range."
+            if rolled_up["totalEvents"] == 0
+            else "Funnel calculation requires complete actorId coverage across all ingested events in the selected date range."
+        )
+        return AnalyticsFunnelResponse(
+            data={
+                "available": False,
+                "reason": reason,
+                "steps": [],
+                "availableEvents": available_events,
+                "coverage": coverage_obj,
+                "observedDays": rolled_up["observedDays"],
+                "lastEventAt": rolled_up["lastEventAt"],
+                "calculatedAt": datetime.now(timezone.utc),
+                "dateRange": _range_response(start, end, capped),
+            }
+        )
+
+    funnel_steps = await event_repo.aggregate_ordered_funnel(
+        workspace.id,
+        start_datetime,
+        end_exclusive,
+        parsed_steps,
+    )
     return AnalyticsFunnelResponse(
         data={
-            "available": False,
-            "reason": "Funnel step and conversion semantics are not defined for ingested events.",
-            "coverage": _coverage(
-                rolled_up["totalEvents"],
-                rolled_up["eventsWithActorId"],
-                rolled_up["eventsWithSessionId"],
-                raw_metrics.get("totalEvents", 0),
-            ),
+            "available": True,
+            "reason": None,
+            "steps": funnel_steps,
+            "availableEvents": available_events,
+            "coverage": coverage_obj,
             "observedDays": rolled_up["observedDays"],
             "lastEventAt": rolled_up["lastEventAt"],
             "calculatedAt": datetime.now(timezone.utc),

@@ -552,6 +552,213 @@ class AnalyticsEventRepository(BaseRepository[AnalyticsEvent]):
             "total": facet["total"][0]["count"] if facet["total"] else 0,
         }
 
+    async def aggregate_feature_counts(
+        self,
+        workspace_id: Any,
+        start: datetime,
+        end_exclusive: datetime,
+    ) -> Dict[str, int]:
+        """Aggregates event counts per featureName for period-over-period comparisons."""
+        ws_oid = self._ensure_object_id(workspace_id)
+        pipeline = [
+            {
+                "$match": {
+                    "workspaceId": ws_oid,
+                    "batchId": {"$type": "objectId"},
+                    "eventTimestamp": {"$gte": start, "$lt": end_exclusive},
+                    "featureName": {"$type": "string", "$ne": ""},
+                }
+            },
+            {"$group": {"_id": "$featureName", "eventCount": {"$sum": 1}}},
+        ]
+        docs = await self.collection.aggregate(pipeline).to_list(length=500)
+        return {doc["_id"]: int(doc["eventCount"]) for doc in docs if doc.get("_id")}
+
+    async def aggregate_feature_daily_trends(
+        self,
+        workspace_id: Any,
+        start: datetime,
+        end_exclusive: datetime,
+        feature_name: str,
+    ) -> List[Dict[str, Any]]:
+        """Aggregates daily events, actor coverage, and session coverage for a single feature."""
+        ws_oid = self._ensure_object_id(workspace_id)
+        pipeline = [
+            {
+                "$match": {
+                    "workspaceId": ws_oid,
+                    "batchId": {"$type": "objectId"},
+                    "eventTimestamp": {"$gte": start, "$lt": end_exclusive},
+                    "featureName": feature_name,
+                }
+            },
+            {
+                "$group": {
+                    "_id": "$date",
+                    "events": {"$sum": 1},
+                    "eventsWithActorId": {
+                        "$sum": {
+                            "$cond": [
+                                {"$and": [{"$ne": ["$actorId", None]}, {"$ne": ["$actorId", ""]}]},
+                                1,
+                                0,
+                            ]
+                        }
+                    },
+                    "eventsWithSessionId": {
+                        "$sum": {
+                            "$cond": [
+                                {"$and": [{"$ne": ["$sessionId", None]}, {"$ne": ["$sessionId", ""]}]},
+                                1,
+                                0,
+                            ]
+                        }
+                    },
+                    "actorIds": {"$addToSet": "$actorId"},
+                    "sessionIds": {"$addToSet": "$sessionId"},
+                    "durationTotalSeconds": {"$sum": {"$ifNull": ["$durationSeconds", 0]}},
+                    "durationSampleCount": {"$sum": {"$cond": [{"$isNumber": "$durationSeconds"}, 1, 0]}},
+                    "lastEventAt": {"$max": "$eventTimestamp"},
+                }
+            },
+            {"$sort": {"_id": 1}},
+        ]
+        docs = await self.collection.aggregate(pipeline).to_list(length=366)
+        items: List[Dict[str, Any]] = []
+        for doc in docs:
+            actors = [a for a in doc.get("actorIds", []) if isinstance(a, str) and a]
+            sessions = [s for s in doc.get("sessionIds", []) if isinstance(s, str) and s]
+            dur_samples = int(doc.get("durationSampleCount", 0))
+            items.append(
+                {
+                    "date": doc["_id"],
+                    "events": int(doc["events"]),
+                    "eventsWithActorId": int(doc["eventsWithActorId"]),
+                    "eventsWithSessionId": int(doc["eventsWithSessionId"]),
+                    "activeUsers": len(actors) if doc["eventsWithActorId"] == doc["events"] else None,
+                    "sessions": len(sessions) if doc["eventsWithSessionId"] == doc["events"] else None,
+                    "avgEventDurationSeconds": (
+                        round(doc["durationTotalSeconds"] / dur_samples, 2) if dur_samples else None
+                    ),
+                    "lastEventAt": doc.get("lastEventAt"),
+                }
+            )
+        return items
+
+    async def list_distinct_event_names(
+        self,
+        workspace_id: Any,
+        start: datetime,
+        end_exclusive: datetime,
+        limit: int = 50,
+    ) -> List[str]:
+        """Lists distinct eventName values observed in the workspace date range."""
+        ws_oid = self._ensure_object_id(workspace_id)
+        pipeline = [
+            {
+                "$match": {
+                    "workspaceId": ws_oid,
+                    "batchId": {"$type": "objectId"},
+                    "eventTimestamp": {"$gte": start, "$lt": end_exclusive},
+                    "eventName": {"$type": "string", "$ne": ""},
+                }
+            },
+            {"$group": {"_id": "$eventName", "count": {"$sum": 1}}},
+            {"$sort": {"count": -1, "_id": 1}},
+            {"$limit": limit},
+        ]
+        docs = await self.collection.aggregate(pipeline).to_list(length=limit)
+        return [doc["_id"] for doc in docs if doc.get("_id")]
+
+    async def aggregate_ordered_funnel(
+        self,
+        workspace_id: Any,
+        start: datetime,
+        end_exclusive: datetime,
+        steps: List[str],
+    ) -> List[Dict[str, Any]]:
+        """
+        Computes ordered unique-user funnel progression across explicit eventName/eventType steps.
+        A user enters stage k only if they completed stage k-1 at or before stage k.
+        """
+        ws_oid = self._ensure_object_id(workspace_id)
+        pipeline = [
+            {
+                "$match": {
+                    "workspaceId": ws_oid,
+                    "batchId": {"$type": "objectId"},
+                    "eventTimestamp": {"$gte": start, "$lt": end_exclusive},
+                    "actorId": {"$type": "string", "$ne": ""},
+                    "$or": [
+                        {"eventName": {"$in": steps}},
+                        {"eventType": {"$in": steps}},
+                    ],
+                }
+            },
+            {
+                "$project": {
+                    "actorId": 1,
+                    "eventName": 1,
+                    "eventType": 1,
+                    "eventTimestamp": 1,
+                }
+            },
+            {"$sort": {"eventTimestamp": 1}},
+        ]
+        events = await self.collection.aggregate(pipeline).to_list(length=50000)
+
+        # Track per-actor ordered stage completion timestamps
+        # stage_reached[actor_id] = index of highest stage reached in strict order (0..len-1)
+        actor_stage_ts: Dict[str, List[Optional[datetime]]] = {}
+        for ev in events:
+            actor = ev.get("actorId")
+            ts = ev.get("eventTimestamp")
+            ev_name = ev.get("eventName")
+            ev_type = ev.get("eventType")
+            if not actor or ts is None:
+                continue
+            progress = actor_stage_ts.setdefault(actor, [None] * len(steps))
+            for idx, step_label in enumerate(steps):
+                if ev_name == step_label or ev_type == step_label:
+                    if progress[idx] is not None:
+                        continue
+                    if idx == 0 or (progress[idx - 1] is not None and ts >= progress[idx - 1]):
+                        progress[idx] = ts
+
+        stage_counts = [
+            sum(1 for prog in actor_stage_ts.values() if prog[idx] is not None)
+            for idx in range(len(steps))
+        ]
+        first_count = stage_counts[0] if stage_counts else 0
+        output: List[Dict[str, Any]] = []
+        for idx, step_label in enumerate(steps):
+            users = stage_counts[idx]
+            prev_users = users if idx == 0 else stage_counts[idx - 1]
+            drop_off_count = 0 if idx == 0 else max(0, prev_users - users)
+            conversion_rate = round((users / first_count) * 100, 2) if first_count > 0 else 0.0
+            step_conv = (
+                100.0
+                if idx == 0 and users > 0
+                else (round((users / prev_users) * 100, 2) if prev_users > 0 else 0.0)
+            )
+            drop_off_rate = (
+                0.0
+                if idx == 0 or prev_users == 0
+                else round((drop_off_count / prev_users) * 100, 2)
+            )
+            output.append(
+                {
+                    "step": step_label,
+                    "order": idx + 1,
+                    "users": users,
+                    "conversionRate": conversion_rate,
+                    "stepConversionRate": step_conv,
+                    "dropOffCount": drop_off_count,
+                    "dropOffRate": drop_off_rate,
+                }
+            )
+        return output
+
 
 class AnalyticsBatchRepository(BaseRepository[AnalyticsBatch]):
     def __init__(self, db: AsyncIOMotorDatabase):

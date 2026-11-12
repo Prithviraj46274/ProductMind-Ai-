@@ -105,9 +105,13 @@ class AnalyticsEventCreate(BaseModel):
 
 
 class AnalyticsBatchRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
 
     items: List[Any] = Field(..., min_length=1, max_length=500)
+    file_name: Optional[str] = Field(default=None, alias="fileName", max_length=255)
+    source_type: Optional[Literal["csv", "json"]] = Field(default=None, alias="sourceType")
+    detected_columns: List[str] = Field(default_factory=list, alias="detectedColumns", max_length=100)
+    mapped_columns: Dict[str, str] = Field(default_factory=dict, alias="mappedColumns")
 
 
 class AnalyticsBatchRetryItem(BaseModel):
@@ -161,6 +165,8 @@ class AnalyticsBatchStatusResponse(BaseModel):
 
     id: str
     workspace_id: str = Field(alias="workspaceId")
+    file_name: Optional[str] = Field(default=None, alias="fileName")
+    source_type: Optional[str] = Field(default=None, alias="sourceType")
     status: str
     total_rows: int = Field(alias="totalRows")
     accepted_rows: int = Field(alias="acceptedRows")
@@ -289,6 +295,8 @@ class AnalyticsFeatureMetricResponse(BaseModel):
         ge=0.0,
     )
     duration_sample_count: int = Field(default=0, alias="durationSampleCount", ge=0)
+    previous_event_count: Optional[int] = Field(default=None, alias="previousEventCount", ge=0)
+    trend_delta_percent: Optional[float] = Field(default=None, alias="trendDeltaPercent")
 
 
 class AnalyticsFeaturesData(BaseModel):
@@ -309,11 +317,25 @@ class AnalyticsFeaturesResponse(BaseModel):
     data: AnalyticsFeaturesData
 
 
+class AnalyticsFunnelStepResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    step: str
+    order: int = Field(ge=1)
+    users: int = Field(ge=0)
+    conversion_rate: float = Field(alias="conversionRate", ge=0.0, le=100.0)
+    step_conversion_rate: float = Field(alias="stepConversionRate", ge=0.0, le=100.0)
+    drop_off_count: int = Field(alias="dropOffCount", ge=0)
+    drop_off_rate: float = Field(alias="dropOffRate", ge=0.0, le=100.0)
+
+
 class AnalyticsFunnelData(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
-    available: Literal[False] = False
-    reason: str
+    available: bool = False
+    reason: Optional[str] = None
+    steps: List[AnalyticsFunnelStepResponse] = Field(default_factory=list)
+    available_events: List[str] = Field(default_factory=list, alias="availableEvents")
     coverage: AnalyticsCoverage
     observed_days: int = Field(alias="observedDays", ge=0)
     last_event_at: Optional[datetime] = Field(default=None, alias="lastEventAt")

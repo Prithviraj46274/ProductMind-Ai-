@@ -202,39 +202,96 @@ class PrioritizationService:
             return None
 
     @staticmethod
-    def _extract_analytics_from_rollups(
+    def _match_feature_name(fm_name: str, search_terms: List[str]) -> bool:
+        """Matches an analytics featureName to a FeatureGroup reliably without generic word false positives."""
+        norm_fm = fm_name.strip().lower()
+        if not norm_fm:
+            return False
+        for term in search_terms:
+            norm_term = term.strip().lower()
+            if not norm_term:
+                continue
+            if norm_fm == norm_term:
+                return True
+            if len(norm_term) >= 4 and len(norm_fm) >= 4 and (norm_term in norm_fm or norm_fm in norm_term):
+                return True
+        return False
+
+    @classmethod
+    def _extract_analytics_details_from_rollups(
+        cls,
         group: FeatureGroup,
         rollups: List[AnalyticsDailyRollup],
-    ) -> Optional[ProductAnalyticsData]:
-        """Builds ProductAnalyticsData from persisted workspace analytics rollups when available."""
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Aggregates feature-matched product usage evidence across workspace daily rollups.
+        Returns None if no reliable feature match exists in the workspace rollups.
+        """
         if not rollups:
             return None
 
+        raw_terms = (
+            [getattr(group, "title", None), getattr(group, "suggested_capability", None), getattr(group, "primary_tag", None)]
+            + list(getattr(group, "common_themes", []) or [])
+        )
+        search_terms = [t.strip() for t in raw_terms if isinstance(t, str) and len(t.strip()) >= 3]
+        if not search_terms:
+            return None
+
+        matched_name: Optional[str] = None
+        total_events = 0
+        daily_series: List[int] = []
+        observed_days = 0
+        latest_unique_users: Optional[int] = None
+        latest_adoption: Optional[float] = None
+        has_any_actor_coverage = False
+
+        for rollup in rollups:
+            candidates = []
+            if rollup.ingested_metrics and rollup.ingested_metrics.feature_metrics:
+                candidates.extend(rollup.ingested_metrics.feature_metrics)
+            if rollup.feature_metrics:
+                candidates.extend(rollup.feature_metrics)
+
+            day_events = 0
+            day_matched = False
+            for fm in candidates:
+                fm_name = getattr(fm, "name", "") or ""
+                if not cls._match_feature_name(fm_name, search_terms):
+                    continue
+                if matched_name is None:
+                    matched_name = fm_name
+                day_matched = True
+                day_events += int(getattr(fm, "event_count", 0) or 0)
+                u_cnt = getattr(fm, "unique_users", None)
+                if u_cnt is not None:
+                    latest_unique_users = int(u_cnt)
+                    has_any_actor_coverage = True
+                adopt = getattr(fm, "adoption_percent", None)
+                if adopt is not None:
+                    latest_adoption = float(adopt)
+
+            if day_matched:
+                observed_days += 1
+                total_events += day_events
+                daily_series.append(day_events)
+
+        if matched_name is None or total_events <= 0:
+            return None
+
+        # Compute feature-specific trend across observed days
+        if len(daily_series) >= 2:
+            if daily_series[-1] > daily_series[0]:
+                trend_dir = "increasing"
+            elif daily_series[-1] < daily_series[0]:
+                trend_dir = "decreasing"
+            else:
+                trend_dir = "stable"
+        else:
+            trend_dir = "stable"
+
+        # Optional funnel drop-off from latest rollup if measured
         latest = rollups[-1]
-        search_terms = [
-            t.lower()
-            for t in ([group.title] + list(getattr(group, "common_themes", []) or []))
-            if isinstance(t, str) and len(t.strip()) >= 3
-        ]
-
-        matched_feature = None
-        all_feature_metrics = []
-        if latest.ingested_metrics and latest.ingested_metrics.feature_metrics:
-            all_feature_metrics.extend(latest.ingested_metrics.feature_metrics)
-        if latest.feature_metrics:
-            all_feature_metrics.extend(latest.feature_metrics)
-
-        for fm in all_feature_metrics:
-            fm_name = (getattr(fm, "name", "") or "").lower()
-            if not fm_name:
-                continue
-            if any(
-                term in fm_name or fm_name in term or any(w in fm_name for w in term.split() if len(w) > 3)
-                for term in search_terms
-            ):
-                matched_feature = fm
-                break
-
         drop_off_rate = None
         if latest.funnel_metrics:
             drop_rates = [
@@ -245,49 +302,83 @@ class PrioritizationService:
             if drop_rates:
                 drop_off_rate = round(max(drop_rates), 2)
 
-        trend_dir = (
-            "increasing"
-            if len(rollups) >= 2 and (rollups[-1].total_events >= rollups[0].total_events)
-            else "stable"
-        )
-
-        if matched_feature is not None:
-            active_users = getattr(matched_feature, "unique_users", None)
-            if active_users is None and latest.ingested_metrics:
-                active_users = latest.ingested_metrics.active_users
-            if active_users is None:
-                active_users = latest.active_users
-            adoption_rate = getattr(matched_feature, "adoption_percent", None)
-            event_count = getattr(matched_feature, "event_count", None)
-            return ProductAnalyticsData(
-                feature_usage_frequency=float(event_count) if event_count is not None else None,
-                active_users=int(active_users) if active_users is not None else None,
-                adoption_rate=float(adoption_rate) if adoption_rate is not None else None,
-                drop_off_rate=drop_off_rate,
-                trend_direction=trend_dir,
-                is_available=True,
-            )
-
-        active_users = latest.active_users or (latest.ingested_metrics.active_users if latest.ingested_metrics else 0)
-        total_events = latest.total_events or (latest.ingested_metrics.total_events if latest.ingested_metrics else 0)
-        if not active_users and not total_events:
-            return None
-
-        adoptions = [
-            float(fm.adoption_percent)
-            for fm in all_feature_metrics
-            if getattr(fm, "adoption_percent", None) is not None
-        ]
-        avg_adoption = round(sum(adoptions) / len(adoptions), 2) if adoptions else None
-
-        return ProductAnalyticsData(
-            feature_usage_frequency=float(total_events) if total_events else None,
-            active_users=int(active_users) if active_users else None,
-            adoption_rate=avg_adoption,
+        analytics_data = ProductAnalyticsData(
+            feature_usage_frequency=float(total_events),
+            active_users=latest_unique_users,
+            adoption_rate=latest_adoption,
             drop_off_rate=drop_off_rate,
             trend_direction=trend_dir,
             is_available=True,
         )
+        return {
+            "analytics_data": analytics_data,
+            "matched_feature": matched_name,
+            "event_count": total_events,
+            "unique_users": latest_unique_users,
+            "adoption_rate": latest_adoption,
+            "drop_off_rate": drop_off_rate,
+            "trend_direction": trend_dir,
+            "observed_days": observed_days,
+            "coverage_status": "complete" if (has_any_actor_coverage and latest_adoption is not None) else "partial",
+        }
+
+    @classmethod
+    def _extract_analytics_from_rollups(
+        cls,
+        group: FeatureGroup,
+        rollups: List[AnalyticsDailyRollup],
+    ) -> Optional[ProductAnalyticsData]:
+        """Builds ProductAnalyticsData from persisted workspace analytics rollups when a feature matches."""
+        details = cls._extract_analytics_details_from_rollups(group, rollups)
+        return details["analytics_data"] if details else None
+
+    async def _resolve_analytics_with_provenance(
+        self,
+        group: FeatureGroup,
+        request: AnalyzePrioritizationRequest,
+        rollups_cache: Optional[List[AnalyticsDailyRollup]],
+    ) -> Dict[str, Any]:
+        """Resolves ProductAnalyticsData plus structured evidence provenance."""
+        group_id_str = str(group.id)
+
+        if request.analytics_data and group_id_str in request.analytics_data:
+            candidate = request.analytics_data[group_id_str]
+            if candidate and candidate.is_available:
+                return {
+                    "analytics_data": candidate,
+                    "matched_feature": group.title,
+                    "event_count": int(candidate.feature_usage_frequency) if candidate.feature_usage_frequency is not None else None,
+                    "unique_users": candidate.active_users,
+                    "adoption_rate": candidate.adoption_rate,
+                    "drop_off_rate": candidate.drop_off_rate,
+                    "trend_direction": candidate.trend_direction,
+                    "observed_days": None,
+                    "coverage_status": "complete" if (candidate.active_users is not None and candidate.adoption_rate is not None) else "partial",
+                }
+
+        if request.usage_analytics_evidence and isinstance(request.usage_analytics_evidence, dict):
+            evidence = request.usage_analytics_evidence
+            target = evidence.get(group_id_str, evidence)
+            coerced = self._coerce_analytics_evidence(target)
+            if coerced:
+                return {
+                    "analytics_data": coerced,
+                    "matched_feature": group.title,
+                    "event_count": int(coerced.feature_usage_frequency) if coerced.feature_usage_frequency is not None else None,
+                    "unique_users": coerced.active_users,
+                    "adoption_rate": coerced.adoption_rate,
+                    "drop_off_rate": coerced.drop_off_rate,
+                    "trend_direction": coerced.trend_direction,
+                    "observed_days": None,
+                    "coverage_status": "complete" if (coerced.active_users is not None and coerced.adoption_rate is not None) else "partial",
+                }
+
+        if rollups_cache:
+            details = self._extract_analytics_details_from_rollups(group, rollups_cache)
+            if details:
+                return details
+
+        return {"analytics_data": None}
 
     async def _resolve_analytics_data_for_group(
         self,
@@ -426,11 +517,12 @@ class PrioritizationService:
             sentiment_score = compute_sentiment_score(sentiment_dist)
 
             # Factor: Usage Impact (0-100 or None)
-            analytics_data = await self._resolve_analytics_data_for_group(
+            usage_resolution = await self._resolve_analytics_with_provenance(
                 group=group,
                 request=request,
                 rollups_cache=rollups_cache,
             )
+            analytics_data = usage_resolution.get("analytics_data")
             usage_impact_score = compute_usage_impact_score(analytics_data)
 
             # 3. Invoke LLM for qualitative evaluation (Business Impact & Strategic Alignment)
@@ -491,6 +583,30 @@ class PrioritizationService:
                 group_name=group.title,
             )
 
+            usage_evidence_summary: Dict[str, Any] = (
+                {
+                    "available": True,
+                    "matched_feature": usage_resolution.get("matched_feature"),
+                    "event_count": usage_resolution.get("event_count"),
+                    "unique_users": usage_resolution.get("unique_users"),
+                    "adoption_rate": usage_resolution.get("adoption_rate"),
+                    "drop_off_rate": usage_resolution.get("drop_off_rate"),
+                    "trend_direction": usage_resolution.get("trend_direction"),
+                    "observed_days": usage_resolution.get("observed_days"),
+                    "coverage_status": usage_resolution.get("coverage_status"),
+                    "usage_impact_score": usage_impact_score,
+                    "weight_applied": normalized_weights.get(FactorName.USAGE_IMPACT.value, 0.0),
+                }
+                if usage_impact_score is not None and analytics_data is not None
+                else {
+                    "available": False,
+                    "matched_feature": None,
+                    "usage_impact_score": None,
+                    "weight_applied": 0.0,
+                    "missing_reason": "No matching feature usage telemetry found in workspace MongoDB Atlas rollups; weight reweighted across available factors.",
+                }
+            )
+
             ai_metadata: Dict[str, Any] = {
                 "agent_id": self.agent.agent_id,
                 "provider": llm_result.metadata.provider,
@@ -500,6 +616,7 @@ class PrioritizationService:
                 "product_opportunity": qual_eval.product_opportunity,
                 "business_impact_explanation": qual_eval.business_impact_explanation,
                 "strategic_alignment_explanation": qual_eval.strategic_alignment_explanation,
+                "usage_analytics_evidence": usage_evidence_summary,
                 "analyzed_at": datetime.now(timezone.utc).isoformat(),
             }
 
@@ -526,8 +643,27 @@ class PrioritizationService:
                     existing.ai_metadata = ai_metadata
                     existing.version += 1
                     existing.updated_at = datetime.now(timezone.utc)
-                    await self.prioritization_repo.update(existing)
-                    scenario_doc = existing
+                    update_fields = {
+                        "finalScore": existing.final_score,
+                        "priorityLevel": existing.priority_level,
+                        "factorScores": existing.factor_scores,
+                        "factorWeights": existing.factor_weights,
+                        "coveragePercentage": existing.coverage_percentage,
+                        "explanation": existing.explanation,
+                        "implementationBenefits": existing.implementation_benefits,
+                        "delayRisks": existing.delay_risks,
+                        "supportingEvidence": existing.supporting_evidence,
+                        "missingData": existing.missing_data,
+                        "recommendation": existing.recommendation,
+                        "aiMetadata": existing.ai_metadata,
+                        "version": existing.version,
+                    }
+                    updated_doc = await self.prioritization_repo.update(
+                        existing.id,
+                        update_fields,
+                        workspace_id=ws_oid,
+                    )
+                    scenario_doc = updated_doc or existing
                 else:
                     new_scenario = PrioritizationScenario(
                         workspace_id=ws_oid,
