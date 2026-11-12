@@ -220,6 +220,12 @@ def get_index_specifications() -> Dict[str, List[IndexModel]]:
     # 20. copilot_conversations
     specs[Collections.COPILOT_CONVERSATIONS] = [
         IndexModel([("workspaceId", ASCENDING), ("userId", ASCENDING), ("lastMessageAt", DESCENDING)], name="workspaceId_1_userId_1_lastMessageAt_-1"),
+        IndexModel(
+            [("workspaceId", ASCENDING), ("userId", ASCENDING), ("requestId", ASCENDING)],
+            unique=True,
+            partialFilterExpression={"requestId": {"$type": "string"}},
+            name="workspaceId_1_userId_1_requestId_1",
+        ),
         IndexModel([("workspaceId", ASCENDING)], name="workspaceId_1"),
         IndexModel([("userId", ASCENDING)], name="userId_1"),
         IndexModel([("isArchived", ASCENDING)], name="isArchived_1"),
@@ -229,6 +235,13 @@ def get_index_specifications() -> Dict[str, List[IndexModel]]:
 
     # 21. copilot_messages
     specs[Collections.COPILOT_MESSAGES] = [
+        IndexModel([("workspaceId", ASCENDING), ("conversationId", ASCENDING), ("createdAt", ASCENDING)], name="workspaceId_1_conversationId_1_createdAt_1"),
+        IndexModel(
+            [("workspaceId", ASCENDING), ("conversationId", ASCENDING), ("role", ASCENDING), ("requestId", ASCENDING)],
+            unique=True,
+            partialFilterExpression={"requestId": {"$type": "string"}},
+            name="workspaceId_1_conversationId_1_role_1_requestId_1",
+        ),
         IndexModel([("conversationId", ASCENDING), ("createdAt", ASCENDING)], name="conversationId_1_createdAt_1"),
         IndexModel([("workspaceId", ASCENDING)], name="workspaceId_1"),
         IndexModel([("conversationId", ASCENDING)], name="conversationId_1"),

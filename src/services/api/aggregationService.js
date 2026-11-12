@@ -1,27 +1,101 @@
 /**
- * Feature Request Aggregation Service
- * Groups similar customer feedback into aggregated request clusters,
- * provides counts, excerpts, recurring pain points, merge, and approval workflows.
+ * ProductMind AI — Feature Request Aggregation Service
+ * Connects to FastAPI AI Feature Intelligence Agent to cluster customer feedback,
+ * aggregate demand, evaluate sentiment, and synthesize product feature proposals.
  */
-import { apiClient } from './apiClient'
+
+import { apiClient, getActiveWorkspaceId } from './apiClient'
 import { API_ENDPOINTS } from './types'
+
+function formatGroupTitle(category, tag) {
+  const cleanTag = (tag || 'General').replace(/[-_]/g, ' ')
+  const capitalizedTag = cleanTag.charAt(0).toUpperCase() + cleanTag.slice(1)
+  return `${capitalizedTag} (${category || 'Feature'})`
+}
 
 export const aggregationService = {
   /**
-   * Aggregate feedback items into cohesive feature request groups
-   * @param {Array} feedbackList - Current workspace feedback
-   * @param {Array} featuresList - Current workspace features
+   * Run AI Feature Intelligence Agent clustering
+   */
+  async groupFeatures({
+    workspaceId,
+    feedbackIds = null,
+    forceRegroup = false,
+    confidenceThreshold = 0.65,
+    minGroupSize = 1,
+  } = {}) {
+    const wsId = workspaceId || getActiveWorkspaceId()
+    if (!wsId) {
+      throw new Error('Workspace ID is required for feature aggregation.')
+    }
+
+    const payload = {
+      workspace_id: wsId,
+      ...(feedbackIds ? { feedback_ids: feedbackIds } : {}),
+      force_regroup: forceRegroup,
+      confidence_threshold: confidenceThreshold,
+      min_group_size: minGroupSize,
+    }
+
+    const response = await apiClient.post(API_ENDPOINTS.AI_FEATURES.GROUP, payload)
+    return response.data
+  },
+
+  /**
+   * Fetch consolidated feature groups from backend
+   */
+  async getFeatureGroups(workspaceId = null, params = {}) {
+    const wsId = workspaceId || getActiveWorkspaceId()
+    if (!wsId) {
+      return []
+    }
+
+    const queryParams = {
+      workspace_id: wsId,
+      ...params,
+    }
+
+    const response = await apiClient.get(API_ENDPOINTS.AI_FEATURES.GROUPS, {
+      params: queryParams,
+    })
+    return response.data || []
+  },
+
+  /**
+   * Fetch specific feature group by ID
+   */
+  async getFeatureGroup(groupId, workspaceId = null) {
+    const wsId = workspaceId || getActiveWorkspaceId()
+    const url = API_ENDPOINTS.AI_FEATURES.GROUP_BY_ID.replace(':id', groupId)
+    const response = await apiClient.get(url, {
+      params: { workspace_id: wsId },
+    })
+    return response.data
+  },
+
+  /**
+   * Detect duplicates among feedback items using AI
+   */
+  async detectDuplicates({ workspaceId, feedbackIds, targetFeedbackId = null }) {
+    const wsId = workspaceId || getActiveWorkspaceId()
+    const response = await apiClient.post(API_ENDPOINTS.AI_FEATURES.DETECT_DUPLICATES, {
+      workspace_id: wsId,
+      feedback_ids: feedbackIds,
+      ...(targetFeedbackId ? { target_feedback_id: targetFeedbackId } : {}),
+    })
+    return response.data
+  },
+
+  /**
+   * Backward-compatible local clustering fallback for demo/offline states
    */
   generateAggregatedGroups(feedbackList = [], featuresList = []) {
     if (!Array.isArray(feedbackList) || feedbackList.length === 0) {
       return []
     }
 
-    // Cluster feedback items by category and shared tags/keywords
     const clusterMap = {}
-
-    feedbackList.forEach(item => {
-      // Find suitable group key
+    feedbackList.forEach((item) => {
       const primaryTag = (item.tags && item.tags[0]) || item.category || 'General'
       const key = `${item.category}__${primaryTag.toLowerCase()}`
 
@@ -34,7 +108,7 @@ export const aggregationService = {
           feedbackItems: [],
           sentimentDistribution: { Positive: 0, Neutral: 0, Negative: 0 },
           painPoints: [],
-          status: 'suggested', // 'suggested' | 'approved' | 'merged'
+          status: 'suggested',
           promotedFeatureId: item.linkedFeatureId || null,
         }
       }
@@ -50,11 +124,10 @@ export const aggregationService = {
       }
     })
 
-    // Transform map to array with counts, top excerpts, and priority heuristics
     return Object.values(clusterMap)
-      .map(group => {
+      .map((group) => {
         const count = group.feedbackItems.length
-        const excerpts = group.feedbackItems.slice(0, 3).map(f => ({
+        const excerpts = group.feedbackItems.slice(0, 3).map((f) => ({
           id: f.id,
           title: f.title,
           customer: f.customer,
@@ -63,10 +136,10 @@ export const aggregationService = {
           snippet: (f.description || f.title).slice(0, 100) + '...',
         }))
 
-        // Match with existing feature if linked
-        const existingFeature = featuresList.find(feat => 
-          feat.id === group.promotedFeatureId || 
-          group.feedbackItems.some(fi => fi.linkedFeatureId === feat.id)
+        const existingFeature = featuresList.find(
+          (feat) =>
+            feat.id === group.promotedFeatureId ||
+            group.feedbackItems.some((fi) => fi.linkedFeatureId === feat.id)
         )
 
         return {
@@ -83,11 +156,24 @@ export const aggregationService = {
   },
 
   /**
-   * Fetch feature groups (delegating to backend when configured)
+   * Compatibility wrapper
    */
   async getGroups(feedbackList = [], featuresList = []) {
-    if (apiClient.isConfigured()) {
-      return apiClient.get(API_ENDPOINTS.AGGREGATION.GROUPS)
+    try {
+      const wsId = getActiveWorkspaceId()
+      if (wsId) {
+        const groups = await this.getFeatureGroups(wsId)
+        if (Array.isArray(groups) && groups.length > 0) {
+          return {
+            success: true,
+            data: groups,
+            isDemo: false,
+            status: 200,
+          }
+        }
+      }
+    } catch {
+      // Fallback to local aggregation
     }
 
     const groups = this.generateAggregatedGroups(feedbackList, featuresList)
@@ -99,45 +185,6 @@ export const aggregationService = {
       timestamp: new Date().toISOString(),
     }
   },
-
-  /**
-   * Merge sourceGroup into targetGroup
-   */
-  mergeGroups(sourceGroupId, targetGroupId, currentGroups) {
-    const source = currentGroups.find(g => g.id === sourceGroupId)
-    const target = currentGroups.find(g => g.id === targetGroupId)
-    if (!source || !target) return currentGroups
-
-    const mergedFeedback = [...target.feedbackItems, ...source.feedbackItems]
-    const updatedTarget = {
-      ...target,
-      feedbackItems: mergedFeedback,
-      count: mergedFeedback.length,
-      painPoints: Array.from(new Set([...target.painPoints, ...source.painPoints])),
-      excerpts: mergedFeedback.slice(0, 4).map(f => ({
-        id: f.id,
-        title: f.title,
-        customer: f.customer,
-        company: f.company,
-        sentiment: f.sentiment,
-        snippet: (f.description || f.title).slice(0, 100) + '...',
-      })),
-    }
-
-    return currentGroups
-      .filter(g => g.id !== sourceGroupId)
-      .map(g => (g.id === targetGroupId ? updatedTarget : g))
-  },
-}
-
-function formatGroupTitle(category, tag) {
-  const cleanTag = tag.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
-  if (category === 'Performance') return `Performance Optimization: ${cleanTag}`
-  if (category === 'Integrations') return `Ecosystem Integrations: ${cleanTag}`
-  if (category === 'Usability') return `UI/UX Refinements: ${cleanTag}`
-  if (category === 'Reliability') return `Reliability & Resilience: ${cleanTag}`
-  if (category === 'Pricing') return `Pricing & Licensing: ${cleanTag}`
-  return `${category}: ${cleanTag}`
 }
 
 export default aggregationService

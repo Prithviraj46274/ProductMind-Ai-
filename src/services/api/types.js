@@ -17,27 +17,76 @@
  */
 
 /**
- * Configured API Endpoints (Documentation and contract definitions)
- * All endpoints are prefixed by VITE_API_BASE_URL when deployed against a backend.
+ * Configured API Endpoints matching FastAPI backend registered routes.
  */
 export const API_ENDPOINTS = {
-  // Authentication (PM Login only)
+  // Authentication & Sessions
   AUTH: {
+    REGISTER: '/api/v1/auth/register',
     LOGIN: '/api/v1/auth/login',
     LOGOUT: '/api/v1/auth/logout',
     SESSION: '/api/v1/auth/session',
     REFRESH: '/api/v1/auth/refresh',
+    ME: '/api/v1/auth/me',
   },
-  // Customer Feedback
+
+  // Multi-Tenant Workspaces
+  WORKSPACES: {
+    LIST: '/api/v1/workspaces',
+    CREATE: '/api/v1/workspaces',
+    DETAIL: (id) => `/api/v1/workspaces/${id}`,
+    MEMBERS: (id) => `/api/v1/workspaces/${id}/members`,
+  },
+
+  // Customer Feedback Ingestion & Retrieval
   FEEDBACK: {
     LIST: '/api/v1/feedback',
-    DETAIL: (id) => `/api/v1/feedback/${id}`,
     CREATE: '/api/v1/feedback',
-    UPDATE: (id) => `/api/v1/feedback/${id}`,
-    DELETE: (id) => `/api/v1/feedback/${id}`,
+    DETAIL: (id) => `/api/v1/feedback/${id}`,
     BATCH_IMPORT: '/api/v1/feedback/batch',
-    CLASSIFY: '/api/v1/feedback/classify',
+    BATCH_STATUS: (batchId) => `/api/v1/feedback/batch/${batchId}`,
   },
+
+  // AI Feedback Intelligence Agent
+  AI_FEEDBACK: {
+    ANALYZE: (id) => `/api/v1/ai/feedback/${id}/analyze`,
+    ANALYSIS: (id) => `/api/v1/ai/feedback/${id}/analysis`,
+    BATCH_ANALYZE: '/api/v1/ai/feedback/analyze-batch',
+  },
+
+  // AI Feature Intelligence Agent (Clustering & Deduplication)
+  AI_FEATURES: {
+    GROUP: '/api/v1/ai/features/group',
+    GROUPS: '/api/v1/ai/features/groups',
+    GROUP_DETAIL: (id) => `/api/v1/ai/features/groups/${id}`,
+    DUPLICATES: '/api/v1/ai/features/detect-duplicates',
+  },
+
+  // AI Prioritization Agent (6-Factor Scoring Engine)
+  AI_PRIORITIZATION: {
+    ANALYZE: '/api/v1/ai/prioritization/analyze',
+    RESULTS: '/api/v1/ai/prioritization/results',
+    RESULT_DETAIL: (id) => `/api/v1/ai/prioritization/results/${id}`,
+    RANK: '/api/v1/ai/prioritization/rank',
+  },
+
+  // AI Product Planning Agent (PRDs & User Stories)
+  AI_PLANNING: {
+    GENERATE: '/api/v1/ai/planning/generate',
+    GENERATE_PRD: '/api/v1/ai/planning/generate-prd',
+    GENERATE_STORIES: '/api/v1/ai/planning/generate-user-stories',
+    LIST: '/api/v1/ai/planning/',
+    DETAIL: (id) => `/api/v1/ai/planning/${id}`,
+    REVIEW: (id) => `/api/v1/ai/planning/${id}/review`,
+  },
+
+  // AI Orchestrator Pipeline
+  AI_ORCHESTRATOR: {
+    RUN: '/api/v1/orchestrator/run',
+    STATUS: (runId) => `/api/v1/orchestrator/runs/${runId}`,
+    HEALTH: '/api/v1/orchestrator/health',
+  },
+
   // Product Analytics
   ANALYTICS: {
     OVERVIEW: '/api/v1/analytics/overview',
@@ -45,36 +94,16 @@ export const API_ENDPOINTS = {
     FEATURE_ADOPTION: '/api/v1/analytics/features',
     FUNNEL: '/api/v1/analytics/funnel',
     UPLOAD_DATASET: '/api/v1/analytics/datasets/upload',
+    UPLOAD_BATCH: '/api/v1/analytics/events/batch',
+    LIST_DATASETS: '/api/v1/analytics/datasets',
+    DATASET_DETAIL: (batchId) => `/api/v1/analytics/datasets/${batchId}`,
   },
-  // Feature Request Aggregation
-  AGGREGATION: {
-    GROUPS: '/api/v1/aggregation/groups',
-    GROUP_DETAIL: (id) => `/api/v1/aggregation/groups/${id}`,
-    MERGE: '/api/v1/aggregation/merge',
-    APPROVE: (id) => `/api/v1/aggregation/groups/${id}/approve`,
-    LINK_FEEDBACK: '/api/v1/aggregation/link-feedback',
-  },
-  // Feature Prioritization
-  PRIORITIZATION: {
-    FEATURES: '/api/v1/prioritization/features',
-    CALCULATE: '/api/v1/prioritization/calculate',
-    UPDATE_FACTORS: (id) => `/api/v1/prioritization/features/${id}/factors`,
-  },
-  // PRD and User Stories
-  PRD: {
-    LIST: '/api/v1/prds',
-    DETAIL: (id) => `/api/v1/prds/${id}`,
-    GENERATE: '/api/v1/prds/generate',
-    UPDATE: (id) => `/api/v1/prds/${id}`,
-  },
-  // Roadmap
-  ROADMAP: {
-    MILESTONES: '/api/v1/roadmap/milestones',
-    UPDATE: (id) => `/api/v1/roadmap/milestones/${id}`,
-  },
-  // Product Copilot
+
+  // Conversational Product Copilot
   COPILOT: {
     CHAT: '/api/v1/copilot/chat',
-    HISTORY: '/api/v1/copilot/history',
+    CONVERSATIONS: '/api/v1/copilot/conversations',
+    CONVERSATION: (conversationId) => `/api/v1/copilot/conversations/${conversationId}`,
+    ARCHIVE: (conversationId) => `/api/v1/copilot/conversations/${conversationId}`,
   },
 }

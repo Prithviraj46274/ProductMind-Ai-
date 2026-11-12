@@ -7,6 +7,7 @@ partial targeted workflows, run state retrieval, and health diagnostics.
 import logging
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status
+from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from app.ai.agents.feedback_intelligence import FeedbackIntelligenceService
 from app.ai.agents.feature_intelligence import FeatureIntelligenceService
@@ -40,6 +41,7 @@ from app.ai.orchestrator.state import (
 )
 from app.api.dependencies import (
     get_current_user,
+    get_mongo_db,
     get_feedback_repository,
     get_feature_group_repository,
     get_prioritization_scenario_repository,
@@ -53,6 +55,10 @@ from app.api.v1.endpoints.prioritization_ai import get_prioritization_service
 from app.api.v1.endpoints.planning_ai import get_product_planning_service
 from app.models.auth import User
 from app.repositories import (
+    FeedbackRepository,
+    FeatureGroupRepository,
+    PrioritizationScenarioRepository,
+    PRDRepository,
     WorkspaceRepository,
     WorkspaceMembershipRepository,
 )
@@ -67,9 +73,14 @@ def get_ai_orchestrator(
     feature_service: FeatureIntelligenceService = Depends(get_feature_intelligence_service),
     prioritization_service: PrioritizationService = Depends(get_prioritization_service),
     planning_service: ProductPlanningService = Depends(get_product_planning_service),
+    feedback_repo: FeedbackRepository = Depends(get_feedback_repository),
+    feature_group_repo: FeatureGroupRepository = Depends(get_feature_group_repository),
+    prioritization_repo: PrioritizationScenarioRepository = Depends(get_prioritization_scenario_repository),
+    prd_repo: PRDRepository = Depends(get_prd_repository),
     workspace_repo: WorkspaceRepository = Depends(get_workspace_repository),
     membership_repo: WorkspaceMembershipRepository = Depends(get_workspace_membership_repository),
     run_store: OrchestratorRunStore = Depends(get_orchestrator_run_store),
+    db: AsyncIOMotorDatabase = Depends(get_mongo_db),
 ) -> AIOrchestrator:
     """Dependency injector constructing the AIOrchestrator with full coordinator wiring."""
     coordinator = PipelineCoordinator(
@@ -77,6 +88,10 @@ def get_ai_orchestrator(
         feature_service=feature_service,
         prioritization_service=prioritization_service,
         planning_service=planning_service,
+        feedback_repo=feedback_repo,
+        feature_group_repo=feature_group_repo,
+        prioritization_repo=prioritization_repo,
+        prd_repo=prd_repo,
         inter_stage_delay_seconds=2.0,
     )
     return AIOrchestrator(
@@ -84,6 +99,7 @@ def get_ai_orchestrator(
         workspace_repo=workspace_repo,
         membership_repo=membership_repo,
         run_store=run_store,
+        db=db,
     )
 
 

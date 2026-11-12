@@ -202,6 +202,7 @@ class PrioritizationAgent(BaseAgent[PrioritizationAgentOutput]):
         strategic_context: Optional[StrategicContext] = None,
         analytics_data: Optional[ProductAnalyticsData] = None,
         max_retries: int = 1,
+        max_output_tokens: int = 800,
     ) -> AgentExecutionResult[PrioritizationAgentOutput]:
         """
         Convenience method that formats domain inputs and executes the agent asynchronously.
@@ -226,6 +227,7 @@ class PrioritizationAgent(BaseAgent[PrioritizationAgentOutput]):
             validated,
             max_retries=max_retries,
             temperature=0.1,
+            max_output_tokens=max_output_tokens,
         )
 
         # Enforce that the output contains the correct feature_group_id

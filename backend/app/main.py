@@ -32,9 +32,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         db = await MongoDBManager.connect_async(settings.MONGODB_URI)
         app.state.mongo_client = MongoDBManager._async_client
         app.state.mongo_db = db
-        logger.info("Connected to MongoDB successfully. Target database: [%s]", db.name)
+        logger.info("Connected to MongoDB Atlas successfully. Target database: [%s]", db.name)
     except Exception as exc:
-        logger.error("Failed to connect to MongoDB during startup: %s", exc)
+        logger.error("CRITICAL: Failed to connect to MongoDB Atlas during startup (no fallback enabled): %s", exc)
         app.state.mongo_client = None
         app.state.mongo_db = None
 

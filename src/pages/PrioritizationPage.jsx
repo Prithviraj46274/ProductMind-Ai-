@@ -24,9 +24,14 @@ import {
   Calculator,
   ExternalLink,
   GitCompare,
+  Brain,
+  Loader2,
+  Quote,
 } from 'lucide-react'
 import { Card, Badge, Button, Modal, DemoModeBanner } from '../components/common'
 import { calculatePriorityScore, getScoreBreakdown, getPriorityTier, FACTOR_WEIGHTS } from '../data/scoringFormulas'
+import { prioritizationService } from '../services/api/prioritizationService'
+import { useWorkspace } from '../context/WorkspaceContext'
 import { SimulatorPage } from './SimulatorPage'
 
 export function PrioritizationPage() {
@@ -49,6 +54,59 @@ export function PrioritizationPage() {
     deleteFeature,
     addToast,
   } = useApp()
+  const { currentWorkspace } = useWorkspace()
+
+  // AI Prioritization state
+  const [aiPrioritizationResults, setAiPrioritizationResults] = useState([])
+  const [isLoadingAiPrioritization, setIsLoadingAiPrioritization] = useState(false)
+  const [aiError, setAiError] = useState(null)
+
+  // Fetch stored prioritization results from backend
+  const loadPrioritization = React.useCallback(async () => {
+    if (!currentWorkspace?.id) return
+    try {
+      const results = await prioritizationService.getPrioritizationResults(currentWorkspace.id)
+      if (Array.isArray(results) && results.length > 0) {
+        setAiPrioritizationResults(results)
+      }
+    } catch (err) {
+      console.warn('Could not load prioritization results:', err)
+    }
+  }, [currentWorkspace?.id])
+
+  React.useEffect(() => {
+    loadPrioritization()
+  }, [loadPrioritization])
+
+  // Run AI Prioritization Engine
+  const handleRunAIPrioritization = async () => {
+    if (!currentWorkspace?.id) {
+      addToast('Please select a workspace first.', 'warning')
+      return
+    }
+
+    setIsLoadingAiPrioritization(true)
+    setAiError(null)
+
+    try {
+      const res = await prioritizationService.analyzePrioritization({
+        workspaceId: currentWorkspace.id,
+      })
+
+      if (res?.results) {
+        setAiPrioritizationResults(res.results)
+        addToast(`Prioritization Agent evaluated ${res.total_evaluated || res.results.length} features!`, 'success')
+      } else {
+        await loadPrioritization()
+      }
+    } catch (err) {
+      const msg = err?.message || 'Prioritization evaluation failed.'
+      setAiError(msg)
+      addToast(msg, 'error')
+    } finally {
+      setIsLoadingAiPrioritization(false)
+    }
+  }
 
   // View modes: 'table', 'card', 'kanban'
   const [viewMode, setViewMode] = useState('table')
@@ -269,17 +327,192 @@ export function PrioritizationPage() {
             </button>
           </div>
 
+          <Button
+            variant="primary"
+            size="sm"
+            disabled={isLoadingAiPrioritization}
+            onClick={handleRunAIPrioritization}
+            icon={isLoadingAiPrioritization ? Loader2 : Brain}
+          >
+            {isLoadingAiPrioritization ? 'Evaluating Features...' : 'Run AI Prioritization'}
+          </Button>
+
           <Link to="/aggregation">
             <Button variant="secondary" size="sm" icon={Layers}>
               Aggregation Clusters
             </Button>
           </Link>
 
-          <Button variant="primary" size="sm" icon={Plus} onClick={handleOpenCreate}>
+          <Button variant="outline" size="sm" icon={Plus} onClick={handleOpenCreate}>
             New Feature
           </Button>
         </div>
       </div>
+
+      {aiError && (
+        <div className="p-3.5 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900 text-rose-600 dark:text-rose-400 text-xs">
+          {aiError}
+        </div>
+      )}
+
+      {/* AI 6-Factor Prioritization Engine Results */}
+      {aiPrioritizationResults.length > 0 && (
+        <Card className="p-4 border border-brand-200/80 dark:border-brand-800/70 bg-white dark:bg-navy-900 space-y-4">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-2">
+            <div>
+              <div className="flex items-center gap-2">
+                <Brain className="w-4 h-4 text-brand-600 dark:text-brand-400" />
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                  AI 6-Factor Prioritization Results ({aiPrioritizationResults.length})
+                </h3>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                  Live 0–100 Composite Engine
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 font-mono">
+                Composite = 0.25 Demand + 0.20 Urgency + 0.20 Business Impact + 0.15 Strategic Alignment + 0.10 Sentiment + 0.10 Usage Impact
+              </p>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            {aiPrioritizationResults.map((res, idx) => {
+              const factorDefs = [
+                { key: 'customer_demand', label: 'Customer Demand', defaultWeight: 0.25, color: 'bg-brand-500' },
+                { key: 'urgency', label: 'Urgency', defaultWeight: 0.20, color: 'bg-rose-500' },
+                { key: 'business_impact', label: 'Business Impact', defaultWeight: 0.20, color: 'bg-indigo-500' },
+                { key: 'strategic_alignment', label: 'Strategic Alignment', defaultWeight: 0.15, color: 'bg-sky-500' },
+                { key: 'sentiment', label: 'Sentiment', defaultWeight: 0.10, color: 'bg-amber-500' },
+                { key: 'usage_impact', label: 'Usage Impact', defaultWeight: 0.10, color: 'bg-emerald-500' },
+              ]
+              const factorScores = res.factor_scores || {}
+              const factorWeights = res.factor_weights || {}
+              const missingList = res.missing_data || []
+
+              return (
+                <div
+                  key={res.result_id || res.feature_group_id || idx}
+                  className="p-3.5 rounded-2xl bg-slate-50/80 dark:bg-navy-950/70 border border-slate-200/80 dark:border-slate-800 space-y-3"
+                >
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div className="flex items-center gap-2.5">
+                      <span className="w-7 h-7 rounded-lg bg-brand-600/10 text-brand-600 dark:text-brand-400 font-bold text-xs inline-flex items-center justify-center">
+                        #{idx + 1}
+                      </span>
+                      <div>
+                        <h4 className="text-xs font-bold text-slate-900 dark:text-white">
+                          {res.group_name}
+                        </h4>
+                        <span className="text-[10px] text-slate-500 dark:text-slate-400">
+                          Data Coverage: {Number(res.coverage_percentage ?? 100).toFixed(1)}%
+                          {missingList.length > 0 ? ` • Reweighted (missing: ${missingList.join(', ')})` : ' • All 6 Factors Measured'}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      <div className="text-right">
+                        <span className="text-base font-black text-brand-600 dark:text-brand-400 font-mono">
+                          {Number(res.final_score ?? 0).toFixed(2)}
+                        </span>
+                        <span className="text-[10px] text-slate-400 ml-1">/ 100</span>
+                      </div>
+                      <Badge variant={res.priority_level === 'Critical' ? 'danger' : res.priority_level === 'High' ? 'warning' : 'brand'}>
+                        {res.priority_level}
+                      </Badge>
+                      {res.feature_group_id && (
+                        <Button
+                          variant="outline"
+                          size="xs"
+                          icon={FileText}
+                          onClick={() => navigate(`/prd-generator?featureId=${res.feature_group_id}`, { state: { featureId: res.feature_group_id } })}
+                        >
+                          Generate PRD
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* All 6 Factor Scores */}
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+                    {factorDefs.map(f => {
+                      const rawScore = factorScores[f.key]
+                      const isMeasured = rawScore !== undefined && rawScore !== null
+                      const weightVal = factorWeights[f.key]
+                      const weightPct = weightVal !== undefined ? `${(Number(weightVal) * 100).toFixed(1)}%` : `${(f.defaultWeight * 100).toFixed(0)}%`
+                      return (
+                        <div
+                          key={f.key}
+                          className="p-2 rounded-xl bg-white dark:bg-navy-900 border border-slate-200/70 dark:border-slate-800 text-[11px]"
+                        >
+                          <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 mb-1">
+                            <span className="truncate font-medium">{f.label}</span>
+                            <span className="text-[10px] font-mono">{weightPct}</span>
+                          </div>
+                          {isMeasured ? (
+                            <>
+                              <div className="font-bold text-slate-900 dark:text-white font-mono">
+                                {Number(rawScore).toFixed(1)}
+                              </div>
+                              <div className="w-full h-1 rounded-full bg-slate-100 dark:bg-slate-800 mt-1 overflow-hidden">
+                                <div className={f.color + ' h-full'} style={{ width: `${Math.min(100, Math.max(0, Number(rawScore)))}%` }} />
+                              </div>
+                            </>
+                          ) : (
+                            <div className="text-[10px] text-amber-600 dark:text-amber-400 font-medium">
+                              Unmeasured
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+
+                  {res.explanation && (
+                    <p className="text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed">
+                      {res.explanation}
+                    </p>
+                  )}
+
+                  {/* Usage Analytics Evidence Explainability */}
+                  {(() => {
+                    const ue = res.agent_metadata?.usage_analytics_evidence
+                    if (ue && ue.available) {
+                      return (
+                        <div className="p-2.5 rounded-xl bg-emerald-50/60 dark:bg-emerald-950/25 border border-emerald-200/70 dark:border-emerald-800/50 text-[11px] space-y-1">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <span className="font-bold text-emerald-800 dark:text-emerald-300">
+                              Usage Analytics Evidence ({ue.matched_feature || res.group_name})
+                            </span>
+                            <span className="font-mono text-[10px] text-emerald-700 dark:text-emerald-400">
+                              Coverage: {ue.coverage_status || 'measured'} • Weight: {(Number(ue.weight_applied ?? 0.1) * 100).toFixed(1)}%
+                            </span>
+                          </div>
+                          <div className="flex flex-wrap gap-x-4 gap-y-1 text-slate-700 dark:text-slate-300 font-mono text-[10px]">
+                            <span>Events: {ue.event_count ?? 'Unavailable'}</span>
+                            <span>Unique Users: {ue.unique_users ?? 'Unavailable'}</span>
+                            <span>Adoption: {ue.adoption_rate !== null && ue.adoption_rate !== undefined ? `${ue.adoption_rate}%` : 'Unavailable'}</span>
+                            <span>Trend: {ue.trend_direction || 'stable'}</span>
+                          </div>
+                        </div>
+                      )
+                    }
+                    if (missingList.includes('usage_impact') || (ue && !ue.available)) {
+                      return (
+                        <div className="p-2.5 rounded-xl bg-amber-50/60 dark:bg-amber-950/25 border border-amber-200/70 dark:border-amber-800/50 text-[11px] text-amber-800 dark:text-amber-300">
+                          <strong>Usage Analytics Unavailable:</strong>{' '}
+                          {ue?.missing_reason || 'No matching feature usage telemetry found in workspace MongoDB Atlas rollups; 10% weight reweighted across measured factors.'}
+                        </div>
+                      )
+                    }
+                    return null
+                  })()}
+                </div>
+              )
+            })}
+          </div>
+        </Card>
+      )}
 
       {/* Verified Mathematical Formula & Priority Thresholds Architecture */}
       <Card className="p-4 bg-gradient-to-r from-brand-50/60 via-slate-50 to-sky-50/60 dark:from-brand-950/40 dark:via-navy-900 dark:to-sky-950/40 border border-brand-200/70 dark:border-brand-800/60">

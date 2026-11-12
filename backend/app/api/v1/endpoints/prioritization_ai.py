@@ -33,9 +33,11 @@ from app.api.dependencies import (
     get_feedback_repository,
     get_workspace_repository,
     get_workspace_membership_repository,
+    get_analytics_rollup_repository,
 )
 from app.models.auth import User
 from app.repositories import (
+    AnalyticsDailyRollupRepository,
     PrioritizationScenarioRepository,
     FeatureGroupRepository,
     FeedbackRepository,
@@ -55,6 +57,7 @@ def get_prioritization_service(
     feedback_repo: FeedbackRepository = Depends(get_feedback_repository),
     workspace_repo: WorkspaceRepository = Depends(get_workspace_repository),
     membership_repo: WorkspaceMembershipRepository = Depends(get_workspace_membership_repository),
+    analytics_rollup_repo: AnalyticsDailyRollupRepository = Depends(get_analytics_rollup_repository),
 ) -> PrioritizationService:
     """Dependency injector for PrioritizationService."""
     agent = PrioritizationAgent(llm_service=llm_service)
@@ -65,6 +68,7 @@ def get_prioritization_service(
         feedback_repo=feedback_repo,
         workspace_repo=workspace_repo,
         membership_repo=membership_repo,
+        analytics_rollup_repo=analytics_rollup_repo,
     )
 
 
@@ -114,8 +118,8 @@ async def analyze_prioritization(
             status_code=status.HTTP_504_GATEWAY_TIMEOUT,
             detail="AI model request timed out during feature prioritization.",
         )
-    except (AIConfigurationException, AIProviderException) as exc:
-        logger.error("Prioritization AI provider exception: %s", exc)
+    except (AIConfigurationException, AIProviderException, AIServiceException) as exc:
+        logger.error("Prioritization AI provider/service exception: %s", exc)
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=f"AI model service failure: {exc}",

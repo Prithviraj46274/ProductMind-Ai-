@@ -137,7 +137,7 @@ class FeedbackIntelligenceService:
             "company_name": feedback.company_name,
         }
 
-        exec_result = await self.agent.execute(agent_input)
+        exec_result = await self.agent.execute(agent_input, max_output_tokens=600)
 
         # Persist analysis
         analysis_data = exec_result.data.model_dump()

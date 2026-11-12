@@ -114,36 +114,44 @@ class PrioritizationAgentOutput(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def normalize_keys(cls, data: Any) -> Any:
-        if isinstance(data, dict):
-            key_map = {
-                "FeatureGroupID": "feature_group_id",
-                "FeatureGroupId": "feature_group_id",
-                "featureGroupId": "feature_group_id",
-                "id": "feature_group_id",
-                "BusinessImpactScore": "business_impact_score",
-                "businessImpactScore": "business_impact_score",
-                "BusinessImpactExplanation": "business_impact_explanation",
-                "businessImpactExplanation": "business_impact_explanation",
-                "StrategicAlignmentScore": "strategic_alignment_score",
-                "strategicAlignmentScore": "strategic_alignment_score",
-                "StrategicAlignmentExplanation": "strategic_alignment_explanation",
-                "strategicAlignmentExplanation": "strategic_alignment_explanation",
-                "CustomerPainPointSeverity": "customer_pain_point_severity",
-                "customerPainPointSeverity": "customer_pain_point_severity",
-                "ProductOpportunity": "product_opportunity",
-                "productOpportunity": "product_opportunity",
-                "ImplementationBenefits": "implementation_benefits",
-                "implementationBenefits": "implementation_benefits",
-                "DelayRisks": "delay_risks",
-                "delayRisks": "delay_risks",
-                "SupportingEvidence": "supporting_evidence",
-                "supportingEvidence": "supporting_evidence",
-                "Reasoning": "reasoning",
-            }
-            for old_k, new_k in key_map.items():
-                if old_k in data and (new_k not in data or data[new_k] is None):
-                    data[new_k] = data[old_k]
-        return data
+        if not isinstance(data, dict):
+            return data
+
+        # Canonical field map based on stripped representation (lowercase, alphanumeric only)
+        canonical_map = {
+            "featuregroupid": "feature_group_id",
+            "id": "feature_group_id",
+            "businessimpactscore": "business_impact_score",
+            "businessimpactexplanation": "business_impact_explanation",
+            "strategicalignmentscore": "strategic_alignment_score",
+            "strategicalignmentexplanation": "strategic_alignment_explanation",
+            "customerpainpointseverity": "customer_pain_point_severity",
+            "productopportunity": "product_opportunity",
+            "implementationbenefits": "implementation_benefits",
+            "delayrisks": "delay_risks",
+            "supportingevidence": "supporting_evidence",
+            "reasoning": "reasoning",
+        }
+
+        normalized: Dict[str, Any] = {}
+        # First pass: preserve existing canonical keys that are already populated
+        for k, v in data.items():
+            if k in canonical_map.values() and v is not None:
+                normalized[k] = v
+
+        # Second pass: map non-canonical variations if target canonical key not yet set
+        for k, v in data.items():
+            stripped = str(k).lower().replace("_", "").replace("-", "").replace(" ", "").strip()
+            target_key = canonical_map.get(stripped)
+            if target_key:
+                if target_key not in normalized or normalized[target_key] is None:
+                    normalized[target_key] = v
+            else:
+                # Preserve unknown keys as-is
+                if k not in normalized:
+                    normalized[k] = v
+
+        return normalized
 
     feature_group_id: str = Field(..., description="Target feature group identifier")
     business_impact_score: float = Field(
@@ -170,7 +178,7 @@ class PrioritizationAgentOutput(BaseModel):
     )
     customer_pain_point_severity: str = Field(
         ...,
-        min_length=5,
+        min_length=3,
         description="Synthesis of user pain point intensity, friction, and workflow disruption",
     )
     product_opportunity: str = Field(

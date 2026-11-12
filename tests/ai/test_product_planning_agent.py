@@ -891,4 +891,404 @@ def test_llm_falsely_claiming_user_provided_origin_downgraded():
     assert downgraded_tech.requires_engineering_review is True
 
 
+# ---------------------------------------------------------------------------
+# Staged PRD Generation & Partial Failure Tests
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_agent_staged_plan_generation_combines_and_preserves_evidence():
+    """Verify staged execution calls Stage 1 (PRD), Stage 2 (Stories), Stage 3 (Tech/Metrics/Risks/Roadmap) and preserves evidence."""
+    from bson import ObjectId
+    from app.ai.agents.product_planning.schemas import (
+        PRDAgentOutput,
+        TechnicalSpecsAgentOutput,
+        UserStoriesAgentOutput,
+    )
+
+    fg_id = str(ObjectId())
+    stage1 = PRDAgentOutput(
+        feature_group_id=fg_id,
+        prd=ProductRequirementsDocument(
+            title="Staged CSV Export Engine",
+            executive_summary="Enables bulk CSV export for enterprise compliance.",
+            problem_statement="Analysts cannot export filtered tables for audits.",
+            background="Repeated requests across 8 enterprise accounts.",
+            customer_pain_points=["Manual copy-paste takes 2 hours"],
+            target_users=["Financial Analysts"],
+            business_objectives=["Unblock renewals"],
+            proposed_solution="Async CSV export worker with download endpoint.",
+            functional_requirements=[
+                ProductRequirement(
+                    requirement_id="REQ-001",
+                    title="CSV Download Button",
+                    description="Export active table rows to CSV.",
+                    origin=RequirementOrigin.SOURCE_SUPPORTED,
+                    is_confirmed=True,
+                    requires_confirmation=False,
+                    source_reference="Need CSV export for quarterly audit",
+                )
+            ],
+            supporting_evidence=["Need CSV export for quarterly audit"],
+        ),
+    )
+    stage2 = UserStoriesAgentOutput(
+        feature_group_id=fg_id,
+        user_stories=[
+            UserStory(
+                story_id="US-001",
+                title="Export Table CSV",
+                description="As an analyst, I want to export CSV data, so that I can complete quarterly audits.",
+                persona="Financial Analyst",
+                business_value="Eliminates manual spreadsheet entry",
+                priority="High",
+                origin=RequirementOrigin.SOURCE_SUPPORTED,
+                is_confirmed=True,
+                requires_confirmation=False,
+                source_reference="Need CSV export for quarterly audit",
+                acceptance_criteria=[
+                    AcceptanceCriterion(
+                        criterion_id="AC-001",
+                        description="Given dashboard table, When user clicks Export CSV, Then CSV downloads.",
+                        scenario_type="positive",
+                        testable=True,
+                    )
+                ],
+            )
+        ],
+    )
+    stage3 = TechnicalSpecsAgentOutput(
+        feature_group_id=fg_id,
+        technical_requirements=[
+            TechnicalRequirement(
+                title="Streaming CSV Endpoint",
+                description="Use async streaming generator for large exports.",
+                category="api",
+                rationale="Prevents memory spikes.",
+                origin=RequirementOrigin.AI_RECOMMENDATION,
+                is_confirmed=False,
+                requires_engineering_review=True,
+            )
+        ],
+        success_metrics=[
+            SuccessMetric(
+                metric_name="CSV Export Adoption",
+                description="Active accounts exporting monthly",
+                measurement_method="Analytics events",
+                baseline=None,
+                suggested_target=None,
+            )
+        ],
+        risk_analysis=[
+            RiskItem(
+                description="Large query timeouts on export",
+                category="performance",
+                impact="Medium",
+                likelihood="Medium",
+                mitigation="Use async background queue.",
+                requires_human_review=True,
+            )
+        ],
+        roadmap_recommendations=[
+            RoadmapPhase(
+                phase_name="Phase 1 - Core API",
+                objective="Ship streaming export endpoint",
+                tasks=["Build streaming route"],
+                deliverables=["CSV API"],
+                suggested_sequencing=1,
+            )
+        ],
+        supporting_evidence=["Export fails on >10k rows"],
+    )
+
+    mock_llm_service = MagicMock()
+    mock_llm_service.is_configured = True
+    mock_llm_service.provider_name = "groq"
+    mock_llm_service.model_name = "qwen/qwen3.8-27b"
+    mock_llm_service.provider.ainvoke_structured = AsyncMock(side_effect=[stage1, stage2, stage3])
+
+    agent = ProductPlanningAgent(llm_service=mock_llm_service)
+    res = await agent.agenerate_plan(
+        group_id=fg_id,
+        title="CSV Export",
+        description="Automated CSV export",
+        feedback_count=8,
+        unique_customer_count=5,
+        pain_points=["Manual copy-paste takes 2 hours"],
+        evidence=["Need CSV export for quarterly audit", "Export fails on >10k rows"],
+        themes=["Reporting"],
+    )
+
+    assert mock_llm_service.provider.ainvoke_structured.call_count == 3
+    assert res.metadata.attempts == 3
+    assert res.data.feature_group_id == fg_id
+    assert res.data.prd.title == "Staged CSV Export Engine"
+    assert len(res.data.user_stories) == 1
+    assert len(res.data.technical_requirements) == 1
+    assert "Need CSV export for quarterly audit" in res.data.supporting_evidence
+    assert "Export fails on >10k rows" in res.data.supporting_evidence
+
+
+@pytest.mark.asyncio
+async def test_partial_stage_failure_does_not_persist_incomplete_prd():
+    """Verify failure in Stage 2 aborts plan generation cleanly and never saves an incomplete PRD."""
+    from bson import ObjectId
+    from app.ai.agents.product_planning.schemas import PRDAgentOutput
+    from app.ai.exceptions import AISchemaValidationException
+    from app.core.enums import PlatformRole
+
+    ws_id = ObjectId()
+    fg_id = ObjectId()
+
+    stage1 = PRDAgentOutput(
+        feature_group_id=str(fg_id),
+        prd=ProductRequirementsDocument(
+            title="Incomplete Draft PRD",
+            executive_summary="Summary text",
+            problem_statement="Problem text",
+            background="Background text",
+            proposed_solution="Proposed solution",
+        ),
+    )
+
+    mock_llm_service = MagicMock()
+    mock_llm_service.is_configured = True
+    mock_llm_service.provider_name = "groq"
+    mock_llm_service.model_name = "qwen/qwen3.8-27b"
+    mock_llm_service.provider.ainvoke_structured = AsyncMock(
+        side_effect=[
+            stage1,
+            AISchemaValidationException("Truncated JSON", provider="groq"),
+            AISchemaValidationException("Truncated JSON retry", provider="groq"),
+        ]
+    )
+
+    agent = ProductPlanningAgent(llm_service=mock_llm_service)
+    prd_repo = MagicMock()
+    prd_repo.find_by_feature_group = AsyncMock(return_value=None)
+    prd_repo.create = AsyncMock()
+    prd_repo.update = AsyncMock()
+
+    fg_repo = MagicMock()
+    fg_repo.find_by_id = AsyncMock(
+        return_value=MagicMock(
+            id=fg_id,
+            title="CSV Export",
+            description="CSV feature",
+            feedback_count=3,
+            unique_customer_count=2,
+            pain_points=["Slow exports"],
+            evidence=["Need CSV export"],
+            common_themes=["Export"],
+            urgency_distribution={"High": 2},
+            sentiment_distribution=None,
+        )
+    )
+
+    service = ProductPlanningService(
+        agent=agent,
+        prd_repo=prd_repo,
+        feature_group_repo=fg_repo,
+    )
+    user = MagicMock(id=ObjectId(), name="PM", platform_role=PlatformRole.PLATFORM_ADMIN)
+
+    with pytest.raises(AISchemaValidationException, match="user_stories"):
+        await service.generate_plan(
+            request=GenerateProductPlanRequest(
+                workspace_id=str(ws_id),
+                feature_group_id=str(fg_id),
+            ),
+            user=user,
+        )
+
+    prd_repo.create.assert_not_called()
+    prd_repo.update.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_staged_generation_retries_parser_error_and_succeeds():
+    """Verify OutputParserException-wrapped AIProviderException triggers retry within a stage and recovers."""
+    from langchain_core.exceptions import OutputParserException
+    from app.ai.agents.product_planning.schemas import (
+        PRDAgentOutput,
+        TechnicalSpecsAgentOutput,
+        UserStoriesAgentOutput,
+    )
+    from app.ai.exceptions import AIProviderException
+
+    fg_id = "fg_retry_01"
+    stage1 = PRDAgentOutput(
+        feature_group_id=fg_id,
+        prd=ProductRequirementsDocument(
+            title="Retry PRD",
+            executive_summary="Summary",
+            problem_statement="Problem",
+            background="Background",
+            proposed_solution="Solution",
+        ),
+    )
+    stage2 = UserStoriesAgentOutput(
+        feature_group_id=fg_id,
+        user_stories=[
+            UserStory(
+                story_id="US-001",
+                title="Story 1",
+                description="As a user, I want export, so that I save time.",
+                persona="User",
+                business_value="Saves time",
+            )
+        ],
+    )
+    stage3 = TechnicalSpecsAgentOutput(
+        feature_group_id=fg_id,
+        technical_requirements=[
+            TechnicalRequirement(
+                title="API Route",
+                description="REST route",
+                category="api",
+                rationale="Standard integration",
+            )
+        ],
+    )
+
+    mock_llm_service = MagicMock()
+    mock_llm_service.is_configured = True
+    mock_llm_service.provider_name = "groq"
+    mock_llm_service.model_name = "qwen/qwen3.8-27b"
+    parser_err = AIProviderException(
+        "Groq service error: OutputParserException",
+        provider="groq",
+        original_exception=OutputParserException("EOF"),
+    )
+    mock_llm_service.provider.ainvoke_structured = AsyncMock(
+        side_effect=[stage1, parser_err, stage2, stage3]
+    )
+
+    agent = ProductPlanningAgent(llm_service=mock_llm_service)
+    res = await agent.agenerate_plan(
+        group_id=fg_id,
+        title="Export",
+        description="CSV export",
+        feedback_count=2,
+        unique_customer_count=2,
+        pain_points=["Slow"],
+        evidence=["Need export"],
+        themes=["Export"],
+        max_retries=1,
+    )
+
+    assert res.data.prd.title == "Retry PRD"
+    assert res.metadata.attempts == 4
+
+
+@pytest.mark.asyncio
+async def test_staged_generation_splits_prd_narrative_and_requirements():
+    """Verify CorePRDNarrativeOutput + CorePRDRequirementsOutput assemble cleanly into ProductPlanningAgentOutput."""
+    from app.ai.agents.product_planning.schemas import (
+        CorePRDNarrativeOutput,
+        CorePRDRequirementsOutput,
+        TechnicalSpecsAgentOutput,
+        UserStoriesAgentOutput,
+    )
+
+    fg_id = "fg_split_01"
+    stage1a = CorePRDNarrativeOutput(
+        feature_group_id=fg_id,
+        title="Split PRD Title",
+        executive_summary="Concise executive summary.",
+        problem_statement="Manual export fails on large tables.",
+        background="Enterprise feedback highlights audit risk.",
+        proposed_solution="Async scheduled export pipeline.",
+        customer_pain_points=["Timeouts on large exports"],
+        target_users=["Finance Leads"],
+        business_objectives=["Reduce enterprise churn"],
+        supporting_evidence=["Manual exports time out"],
+    )
+    stage1b = CorePRDRequirementsOutput(
+        feature_group_id=fg_id,
+        functional_requirements=[
+            ProductRequirement(
+                requirement_id="FR-001",
+                title="Scheduled Export",
+                description="Schedule recurring BigQuery and S3 exports.",
+                origin=RequirementOrigin.SOURCE_SUPPORTED,
+                is_confirmed=True,
+                requires_confirmation=False,
+                source_reference="Manual exports time out",
+            )
+        ],
+        non_functional_requirements=[
+            ProductRequirement(
+                requirement_id="NFR-001",
+                title="Execution Latency",
+                description="Benchmark export latency with engineering.",
+                origin=RequirementOrigin.AI_RECOMMENDATION,
+                is_confirmed=False,
+                requires_confirmation=True,
+                numerical_threshold=None,
+            )
+        ],
+        dependencies=["MongoDB", "FastAPI"],
+    )
+    stage2 = UserStoriesAgentOutput(
+        feature_group_id=fg_id,
+        user_stories=[
+            UserStory(
+                story_id="US-001",
+                title="Schedule Export",
+                description="As a finance lead, I want scheduled exports, so that audits run automatically.",
+                persona="Finance Lead",
+                business_value="Eliminates manual downloads",
+                acceptance_criteria=[
+                    AcceptanceCriterion(
+                        criterion_id="AC-001",
+                        description="Given schedule configured, When cron fires, Then export completes.",
+                        scenario_type="positive",
+                        testable=True,
+                    )
+                ],
+            )
+        ],
+    )
+    stage3 = TechnicalSpecsAgentOutput(
+        feature_group_id=fg_id,
+        technical_requirements=[
+            TechnicalRequirement(
+                title="Async Worker",
+                description="Run scheduled exports via FastAPI background worker.",
+                category="architecture",
+                rationale="Avoids request timeouts.",
+            )
+        ],
+        supporting_evidence=["N/A", "Need automated S3 exports"],
+    )
+
+    mock_llm_service = MagicMock()
+    mock_llm_service.is_configured = True
+    mock_llm_service.provider_name = "groq"
+    mock_llm_service.model_name = "qwen/qwen3.8-27b"
+    mock_llm_service.provider.ainvoke_structured = AsyncMock(
+        side_effect=[stage1a, stage1b, stage2, stage3]
+    )
+
+    agent = ProductPlanningAgent(llm_service=mock_llm_service)
+    res = await agent.agenerate_plan(
+        group_id=fg_id,
+        title="Scheduled Export",
+        description="Automated export scheduler",
+        feedback_count=2,
+        unique_customer_count=2,
+        pain_points=["Timeouts"],
+        evidence=["Manual exports time out"],
+        themes=["Export"],
+    )
+
+    assert mock_llm_service.provider.ainvoke_structured.call_count == 4
+    assert res.metadata.attempts == 4
+    assert res.data.prd.title == "Split PRD Title"
+    assert len(res.data.prd.functional_requirements) == 1
+    assert len(res.data.prd.non_functional_requirements) == 1
+    assert "N/A" not in res.data.supporting_evidence
+    assert "Need automated S3 exports" in res.data.supporting_evidence
+
+
 

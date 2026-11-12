@@ -119,8 +119,8 @@ async def generate_product_plan(
             status_code=status.HTTP_504_GATEWAY_TIMEOUT,
             detail="AI model request timed out during product plan generation.",
         )
-    except (AIConfigurationException, AIProviderException) as exc:
-        logger.error("Planning AI provider exception: %s", exc)
+    except (AIConfigurationException, AIProviderException, AIServiceException) as exc:
+        logger.error("Planning AI provider/service exception: %s", exc)
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=f"AI model service failure: {exc}",
@@ -162,8 +162,8 @@ async def generate_prd(
     except AITimeoutException as exc:
         logger.warning("Planning AI timeout: %s", exc)
         raise HTTPException(status_code=status.HTTP_504_GATEWAY_TIMEOUT, detail="AI request timed out.")
-    except (AIConfigurationException, AIProviderException) as exc:
-        logger.error("Planning AI provider error: %s", exc)
+    except (AIConfigurationException, AIProviderException, AIServiceException) as exc:
+        logger.error("Planning AI provider/service error: %s", exc)
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"AI service failure: {exc}")
     except Exception as exc:
         logger.exception("Unexpected error during PRD generation: %s", exc)
@@ -199,8 +199,8 @@ async def generate_user_stories(
     except AITimeoutException as exc:
         logger.warning("Planning AI timeout: %s", exc)
         raise HTTPException(status_code=status.HTTP_504_GATEWAY_TIMEOUT, detail="AI request timed out.")
-    except (AIConfigurationException, AIProviderException) as exc:
-        logger.error("Planning AI provider error: %s", exc)
+    except (AIConfigurationException, AIProviderException, AIServiceException) as exc:
+        logger.error("Planning AI provider/service error: %s", exc)
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"AI service failure: {exc}")
     except Exception as exc:
         logger.exception("Unexpected error during user story generation: %s", exc)

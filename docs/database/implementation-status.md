@@ -21,7 +21,63 @@ This document provides an honest, precise account of the database engineering de
 
 ---
 
-## 2. Detailed Collection & Module Inventory
+## 2. Current Workspace Management API
+
+Phase 4 Step 9 adds authenticated workspace and membership endpoints under `/api/v1/workspaces`:
+
+| Method | Route | Permission |
+|---|---|---|
+| `POST` | `/workspaces` | Authenticated user; creates a Starter workspace and active owner membership |
+| `GET` | `/workspaces` | Authenticated user; returns only owned or active-member workspaces |
+| `GET` | `/workspaces/{workspace_id}` | Active workspace member or owner |
+| `PATCH` | `/workspaces/{workspace_id}` | Workspace owner or active workspace admin |
+| `GET` | `/workspaces/{workspace_id}/members` | Active workspace member or owner; returns safe profile fields |
+| `POST` | `/workspaces/{workspace_id}/members` | Workspace owner or active workspace admin; adds an existing active user |
+| `PATCH` | `/workspaces/{workspace_id}/members/{user_id}` | Workspace owner or active workspace admin, with admin-role changes restricted to owner |
+| `DELETE` | `/workspaces/{workspace_id}/members/{user_id}` | Workspace owner or active workspace admin; deactivates membership |
+| `DELETE` | `/workspaces/{workspace_id}/members/me` | Active member leaving the workspace |
+
+Workspace owners and active workspace admins can update workspace settings and manage members; active members can read workspace details and member lists. Membership removal is a soft deactivation, and the `ownerId` field remains authoritative because the existing role enum has no separate owner role. Owner removal or demotion is rejected; ownership transfer is not implemented.
+
+The API uses existing workspace, membership, user, and audit-log collections. It does not expose plan changes, archive operations, user credentials, or member email addresses. Membership changes are recorded using the existing workspace audit entity.
+
+---
+
+## 3. Current Feedback API (Phase 4 Step 10)
+
+The authenticated feedback API is mounted at `/api/v1/feedback`. List, create, batch-ingest, and batch-status requests require a `workspaceId` query parameter and active workspace membership (or workspace ownership/platform-admin access). Feedback detail derives its workspace from the stored item. Workspace access failures are returned as not found to avoid disclosing tenant data.
+
+| Method | Route | Behavior |
+|---|---|---|
+| `GET` | `/feedback?workspaceId=...` | Workspace-scoped, paginated list (maximum 100 per page), with text search, category, sentiment, source-priority, linked-feature, and sort filters |
+| `POST` | `/feedback?workspaceId=...` | Creates a manual feedback item; requires `externalId` or an `Idempotency-Key` header |
+| `GET` | `/feedback/{feedback_id}` | Retrieves an item only after checking access to its owning workspace |
+| `POST` | `/feedback/batch?workspaceId=...` | Accepts JSON `{ "items": [...] }` with 1–500 rows and returns accepted, duplicate, or rejected outcomes per row |
+| `GET` | `/feedback/batch/{batch_id}?workspaceId=...` | Returns workspace-scoped batch counts and bounded row-error samples |
+| `POST` | `/feedback/batch/{batch_id}/retry?workspaceId=...` | Retries only previously rejected rows, identified by their original `rowNumber` |
+
+Batch rows require a stable `externalId` or `id`. The source-scoped unique index is used for idempotency; identical retries are reported as duplicates, while reuse of an identifier for different source content is rejected. Clients can retry only failed rows through the retry route using the same stable identifiers. Retry claims are atomic, and accepted items retain the original batch ID. No fuzzy/text-similarity deduplication is performed. Row errors omit submitted values and are bounded by the existing `FeedbackBatch.errorSummary` field.
+
+Feedback creation preserves AI-owned fields by leaving them at their model defaults. `linkedFeatureId` and `promotedFeatureId` are accepted as input names for the existing `promotedFeatureId` field, and a referenced feature must belong to the same workspace. Feedback edit/delete routes, frontend wiring, multipart CSV upload, AI-agent changes, and database migrations are outside this step.
+
+## 4. Current Product Analytics API (Phase 4 Step 11)
+
+The authenticated analytics API is mounted at `/api/v1/analytics`; all routes require a `workspaceId` and accessible workspace. Single-event ingestion and JSON batches require stable event IDs, timezone-aware RFC3339 timestamps, and UTC-derived dates. Batch imports accept 1–500 rows, report accepted/duplicate/rejected outcomes, and support atomic retries restricted to originally rejected row numbers and event IDs.
+
+| Method | Route | Behavior |
+|---|---|---|
+| `POST` | `/analytics/events?workspaceId=...` | Ingests one event; identical event ID/content is idempotent and conflicting reuse returns `409` |
+| `POST` | `/analytics/datasets/upload?workspaceId=...` | Synchronously ingests a bounded JSON batch |
+| `GET` | `/analytics/datasets/{batch_id}?workspaceId=...` | Returns workspace-scoped batch status and row errors |
+| `POST` | `/analytics/datasets/{batch_id}/retry?workspaceId=...` | Atomically claims and retries only rejected rows with their original event IDs |
+| `GET` | `/analytics/overview` | Measured event, identity, duration, coverage, and freshness metrics |
+| `GET` | `/analytics/usage-trends` | Workspace/date-filtered daily ingested rollups |
+| `GET` | `/analytics/features` | Workspace/date-filtered feature usage with pagination |
+| `GET` | `/analytics/funnel` | Explicitly unavailable until funnel semantics are defined |
+
+Daily aggregates are stored in additive `ingestedMetrics`, leaving seeded top-level sample values untouched. The API does not infer users, sessions, features, event times, or custom properties. Event duration is not presented as session duration; account and funnel metrics are unavailable. Because the existing raw-event TTL is 90 days, longer-range distinct user/session counts are withheld when raw-event coverage is incomplete. See [analytics-contract.md](./analytics-contract.md) for request examples, formulas, range rules, and coverage interpretation. No frontend or live database changes were made.
+
+## 5. Detailed Collection & Module Inventory
 
 | Module | Collection Name | Mongoose Model | Implementation Status | Verified Record Count | Notes & Scope Boundary |
 |---|---|---|---|---|---|
@@ -51,7 +107,7 @@ This document provides an honest, precise account of the database engineering de
 
 ---
 
-## 3. Scope Boundaries & Next Phase Readiness
+## 5. Scope Boundaries & Next Phase Readiness
 
 ### What Has Been Completed in This Task
 1. Comprehensive audit of all frontend pages, mock data, local storage keys, and API contracts.
@@ -68,9 +124,9 @@ This document provides an honest, precise account of the database engineering de
 12. All records inspected directly in MongoDB and ready for inspection via MongoDB Compass or MongoDB Atlas.
 
 ### What Remains for Subsequent Backend Phases
-1. **REST API Controllers & Routers**: Express.js or Fastify route handlers executing queries against these models.
-2. **Authentication Middleware**: JWT issuance, passport / bcrypt verification middleware, and workspace membership authorization checks.
-3. **ETL File Ingestion Pipeline**: Server-side RFC4180 streaming CSV / JSON parser writing directly to `feedback_batches` and `feedback_items`.
-4. **Daily Analytics Cron Worker**: Scheduled nightly job calculating `analytics_daily_rollups` from `analytics_events`.
+1. **Remaining REST API Controllers & Routers**: General business APIs, feedback ingestion, and analytics endpoints beyond the workspace and existing AI-specific routes.
+2. **Authorization Coverage**: Apply centralized workspace and role checks to remaining domain APIs; analytics, feedback, and workspace routes now include scoped checks.
+3. **ETL File Ingestion Pipeline**: Server-side RFC4180 streaming CSV support and any additional ingestion workflows outside the bounded JSON analytics and feedback APIs.
+4. **Daily Analytics Cron Worker**: Scheduled nightly refresh of `analytics_daily_rollups`; accepted analytics events currently refresh affected ingested daily aggregates synchronously.
 5. **Generative AI & LLM Service**: Real integration with Gemini / OpenAI API for PRD text generation and Copilot conversational responses.
 6. **Atlas Vector Search Index Configuration**: Creating vector search index definitions in MongoDB Atlas if deployed in a cloud environment.

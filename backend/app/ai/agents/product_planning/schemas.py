@@ -408,12 +408,76 @@ class PRDAgentOutput(BaseModel):
     prd: ProductRequirementsDocument = Field(..., description="Generated Product Requirements Document")
 
 
+class CorePRDNarrativeOutput(BaseModel):
+    """Stage 1a schema: concise core PRD narrative sections (fits comfortably within Groq OTPM cap)."""
+    model_config = ConfigDict(extra="ignore")
+
+    feature_group_id: str = Field(..., description="Source feature group ID")
+    title: str = Field(..., description="Clear, descriptive PRD title")
+    executive_summary: str = Field(..., description="Concise 1-2 sentence overview and value proposition")
+    problem_statement: str = Field(..., description="Concise customer and business problem formulation")
+    background: str = Field(..., description="Origin of request and historical drivers")
+    proposed_solution: str = Field(..., description="Concise proposed capability and user experience")
+    customer_pain_points: List[str] = Field(default_factory=list, description="Specific grounded customer pain points")
+    target_users: List[str] = Field(default_factory=list, description="Target personas and primary user roles")
+    business_objectives: List[str] = Field(default_factory=list, description="Commercial and product goals achieved")
+    workflows: List[str] = Field(default_factory=list, description="Key user-facing workflows")
+    out_of_scope: List[str] = Field(default_factory=list, description="Explicitly deferred non-goals")
+    open_questions: List[str] = Field(default_factory=list, description="Unresolved decisions requiring alignment")
+    supporting_evidence: List[str] = Field(default_factory=list, description="Verbatim customer feedback quotes")
+
+
+class CorePRDRequirementsOutput(BaseModel):
+    """Stage 1b schema: origin-classified functional/non-functional requirements and dependencies."""
+    model_config = ConfigDict(extra="ignore")
+
+    feature_group_id: str = Field(..., description="Source feature group ID")
+    functional_requirements: List[ProductRequirement] = Field(
+        default_factory=list,
+        description="Explicit functional capabilities classified by origin",
+    )
+    non_functional_requirements: List[ProductRequirement] = Field(
+        default_factory=list,
+        description="Non-functional requirements with ungrounded thresholds set to null",
+    )
+    dependencies: List[str] = Field(default_factory=list, description="System, API, or external dependencies")
+    risks_and_assumptions: List[str] = Field(default_factory=list, description="Key operational assumptions")
+    success_metrics: List[str] = Field(default_factory=list, description="Primary summary metrics")
+
+
 class UserStoriesAgentOutput(BaseModel):
     """Target schema when generating or regenerating user stories alone."""
     model_config = ConfigDict(extra="ignore")
 
     feature_group_id: str = Field(..., description="Source feature group ID")
     user_stories: List[UserStory] = Field(default_factory=list, description="Generated user stories")
+
+
+class TechnicalSpecsAgentOutput(BaseModel):
+    """Target schema for Stage 3 planning generation: technical specs, metrics, risks, and roadmap."""
+    model_config = ConfigDict(extra="ignore")
+
+    feature_group_id: str = Field(..., description="Source feature group ID")
+    technical_requirements: List[TechnicalRequirement] = Field(
+        default_factory=list,
+        description="Proposed engineering suggestions",
+    )
+    success_metrics: List[SuccessMetric] = Field(
+        default_factory=list,
+        description="Recommended KPIs with non-fabricated baselines",
+    )
+    risk_analysis: List[RiskItem] = Field(
+        default_factory=list,
+        description="Categorized risks and actionable mitigations",
+    )
+    roadmap_recommendations: List[RoadmapPhase] = Field(
+        default_factory=list,
+        description="Suggested delivery milestones",
+    )
+    supporting_evidence: List[str] = Field(
+        default_factory=list,
+        description="Verbatim customer feedback quotes supporting technical and rollout decisions",
+    )
 
 
 # ---------------------------------------------------------------------------

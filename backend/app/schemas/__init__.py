@@ -11,10 +11,30 @@ from app.schemas.auth import (
     TokenRefreshResponse,
     MessageResponse,
 )
-from app.schemas.workspace import WorkspaceCreate, WorkspaceUpdate, WorkspaceResponse, WorkspaceSettingsDTO
+from app.schemas.workspace import (
+    WorkspaceCreate,
+    WorkspaceMemberAdd,
+    WorkspaceMemberResponse,
+    WorkspaceMemberRoleUpdate,
+    WorkspaceResponse,
+    WorkspaceSettingsDTO,
+    WorkspaceUpdate,
+)
 from app.schemas.feedback import FeedbackItemCreate, FeedbackItemUpdate, FeedbackItemResponse
 from app.schemas.feature import FeatureCreate, FeatureUpdate, FeatureResponse
-from app.schemas.analytics import AnalyticsDailyRollupResponse, AnalyticsEventCreate
+from app.schemas.analytics import (
+    AnalyticsBatchIngestResponse,
+    AnalyticsBatchRequest,
+    AnalyticsBatchRetryRequest,
+    AnalyticsBatchStatusResponse,
+    AnalyticsDailyRollupResponse,
+    AnalyticsEventCreate,
+    AnalyticsEventResponse,
+    AnalyticsFeaturesResponse,
+    AnalyticsFunnelResponse,
+    AnalyticsOverviewResponse,
+    AnalyticsUsageTrendsResponse,
+)
 from app.schemas.prd import PRDCreate, PRDUpdate, PRDResponse
 from app.schemas.roadmap import RoadmapItemCreate, RoadmapItemUpdate, RoadmapItemResponse
 from app.schemas.copilot import (
@@ -33,6 +53,9 @@ __all__ = [
     "WorkspaceUpdate",
     "WorkspaceResponse",
     "WorkspaceSettingsDTO",
+    "WorkspaceMemberAdd",
+    "WorkspaceMemberRoleUpdate",
+    "WorkspaceMemberResponse",
     "FeedbackItemCreate",
     "FeedbackItemUpdate",
     "FeedbackItemResponse",
@@ -41,6 +64,15 @@ __all__ = [
     "FeatureResponse",
     "AnalyticsDailyRollupResponse",
     "AnalyticsEventCreate",
+    "AnalyticsEventResponse",
+    "AnalyticsBatchRequest",
+    "AnalyticsBatchRetryRequest",
+    "AnalyticsBatchIngestResponse",
+    "AnalyticsBatchStatusResponse",
+    "AnalyticsOverviewResponse",
+    "AnalyticsUsageTrendsResponse",
+    "AnalyticsFeaturesResponse",
+    "AnalyticsFunnelResponse",
     "PRDCreate",
     "PRDUpdate",
     "PRDResponse",
@@ -54,4 +86,3 @@ __all__ = [
     "AuditLogCreate",
     "AuditLogResponse",
 ]
-

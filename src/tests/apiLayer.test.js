@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { apiClient } from '../services/api/apiClient'
 import { authService } from '../services/api/authService'
 import { prioritizationService } from '../services/api/prioritizationService'
@@ -9,31 +9,81 @@ describe('Centralized API Client and Service Layer', () => {
     localStorage.clear()
   })
 
-  it('correctly reports backend configured state', () => {
-    // In test environment, VITE_API_BASE_URL is not set to a live backend
-    expect(apiClient.isConfigured()).toBe(false)
-    expect(typeof apiClient.getBaseUrl()).toBe('string')
+  afterEach(() => {
+    vi.restoreAllMocks()
   })
 
-  it('authenticates single PM user with valid mock session and rejects invalid email', async () => {
-    const res = await authService.login('alex.rivera@productmind.ai', 'demo123')
+  it('correctly reports backend configured state', () => {
+    const configuredBaseUrl = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '')
+    expect(apiClient.isConfigured()).toBe(Boolean(configuredBaseUrl))
+    expect(typeof apiClient.getBaseUrl()).toBe('string')
+    expect(apiClient.getBaseUrl()).toBe(configuredBaseUrl)
+  })
+
+  it('authenticates PM user against backend auth endpoint and rejects invalid credentials', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        headers: { get: () => 'application/json' },
+        json: async () => ({
+          accessToken: 'jwt-access-token',
+          refreshToken: 'jwt-refresh-token',
+          expiresIn: 3600,
+          user: {
+            id: 'usr-pm-01',
+            name: 'Alex Rivera',
+            email: 'alex.rivera@productmind.ai',
+            role: 'Lead Product Architect',
+          },
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 401,
+        statusText: 'Unauthorized',
+        headers: { get: () => 'application/json' },
+        json: async () => ({ detail: 'Invalid email or password' }),
+      })
+
+    const res = await authService.login('alex.rivera@productmind.ai', 'valid-pass-123')
     expect(res.success).toBe(true)
-    expect(res.isDemo).toBe(true)
+    expect(res.isDemo).toBe(false)
     expect(res.data.user.role).toBe('Lead Product Architect')
-    expect(res.data.token).toBeDefined()
+    expect(res.data.token).toBe('jwt-access-token')
 
     // Test session retrieval
     const currentSession = authService.getCurrentSession()
     expect(currentSession).not.toBeNull()
     expect(currentSession.user.name).toBe('Alex Rivera')
+    expect(currentSession.refreshToken).toBe('jwt-refresh-token')
 
-    // Test rejection of non-email/blank credentials
-    const badRes = await authService.login('unknown_guest', '1')
+    // Test rejection of invalid credentials
+    const badRes = await authService.login('unknown_guest@productmind.ai', 'wrongpass')
     expect(badRes.success).toBe(false)
+    expect(badRes.status).toBe(401)
+    expect(fetchSpy).toHaveBeenCalledTimes(2)
   })
 
   it('handles session expiration and logout correctly', async () => {
-    await authService.login('alex.rivera@productmind.ai', 'demo123')
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: { get: () => 'application/json' },
+      json: async () => ({
+        accessToken: 'jwt-access-token',
+        refreshToken: 'jwt-refresh-token',
+        expiresIn: 3600,
+        user: {
+          id: 'usr-pm-01',
+          name: 'Alex Rivera',
+          email: 'alex.rivera@productmind.ai',
+          role: 'Lead Product Architect',
+        },
+      }),
+    })
+
+    await authService.login('alex.rivera@productmind.ai', 'valid-pass-123')
     expect(authService.getCurrentSession()).not.toBeNull()
 
     // Simulate expired session (expired 1 hour ago)
@@ -80,30 +130,55 @@ describe('Centralized API Client and Service Layer', () => {
     expect(explanation.totalScore).toBe(7.85)
   })
 
-  it('aggregationService clusters feedback and supports merging groups', async () => {
+  it('aggregationService integrates backend feature grouping and supports local clustering fallback', async () => {
     const feedbackList = [
       { id: 'fb-1', title: 'Export to CSV is needed', category: 'Analytics', tags: ['csv-export'], sentiment: 'Neutral' },
       { id: 'fb-2', title: 'Need CSV download button', category: 'Analytics', tags: ['csv-export'], sentiment: 'Negative' },
       { id: 'fb-3', title: 'Dark mode contrast is too low', category: 'Usability', tags: ['contrast'], sentiment: 'Negative' },
     ]
 
+    // 1. Verify local clustering fallback when no active workspace backend groups exist
     const groupsRes = await aggregationService.getGroups(feedbackList, [])
     expect(groupsRes.success).toBe(true)
     expect(groupsRes.isDemo).toBe(true)
-    expect(groupsRes.data.length).toBeGreaterThan(0)
+    expect(groupsRes.data.length).toBe(2)
 
     const analyticsGroup = groupsRes.data.find(g => g.category === 'Analytics')
     expect(analyticsGroup).toBeDefined()
     expect(analyticsGroup.feedbackItems.length).toBe(2)
+    expect(analyticsGroup.count).toBe(2)
 
-    // Merge groups test
-    if (groupsRes.data.length >= 2) {
-      const g1 = groupsRes.data[0].id
-      const g2 = groupsRes.data[1].id
-      const merged = aggregationService.mergeGroups(g2, g1, groupsRes.data)
-      expect(merged.length).toBe(groupsRes.data.length - 1)
-      const target = merged.find(g => g.id === g1)
-      expect(target.count).toBe(groupsRes.data[0].count + groupsRes.data[1].count)
-    }
+    // 2. Verify Phase 2 backend feature grouping & retrieval API methods
+    localStorage.setItem('pmai_active_workspace_id', 'ws-test-123')
+    const mockBackendGroups = [
+      { feature_group_id: 'fg-1', title: 'CSV Export', total_request_count: 2 },
+      { feature_group_id: 'fg-2', title: 'Dark Mode Contrast', total_request_count: 1 },
+    ]
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        headers: { get: () => 'application/json' },
+        json: async () => ({ groups: mockBackendGroups }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        headers: { get: () => 'application/json' },
+        json: async () => mockBackendGroups,
+      })
+
+    const grouped = await aggregationService.groupFeatures({
+      workspaceId: 'ws-test-123',
+      feedbackIds: ['fb-1', 'fb-2', 'fb-3'],
+    })
+    expect(grouped.groups).toHaveLength(2)
+
+    const fetched = await aggregationService.getGroups(feedbackList, [])
+    expect(fetched.success).toBe(true)
+    expect(fetched.isDemo).toBe(false)
+    expect(fetched.data).toHaveLength(2)
+    expect(fetched.data[0].feature_group_id).toBe('fg-1')
+    expect(fetchSpy).toHaveBeenCalledTimes(2)
   })
 })

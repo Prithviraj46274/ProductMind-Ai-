@@ -49,7 +49,8 @@ You must adhere strictly to these analytical principles:
    - `grouping_reason`: Explicitly explain the semantic rationale for why these items belong together.
 
 7. UNGROUPED CANDIDATES:
-   - Any feedback item that does not share semantic equivalence with another request should be placed in `ungrouped_feedback_ids`.
+   - If `min_group_size == 1`, create a `FeatureGroupAnalysis` entry in `groups` even for standalone feature requests so every eligible feature request can advance to prioritization and planning.
+   - Only place items in `ungrouped_feedback_ids` when `min_group_size > 1` and they have no semantic match, or when confidence is below `{confidence_threshold}`.
 
 Output must strictly adhere to the requested JSON schema. Return JSON only."""
 
@@ -63,7 +64,7 @@ CANDIDATE FEATURE REQUESTS:
 Grouping Instructions:
 - Carefully evaluate all provided candidate requests.
 - Identify requests that express the same underlying product capability (e.g. dark mode, night theme, dark appearance) and group them together under `groups`.
-- Identify distinct capabilities (e.g. CSV vs Excel export, dashboard layout) and either group them into separate feature groups or place standalone items in `ungrouped_feedback_ids`.
+- Identify distinct capabilities (e.g. CSV vs Excel export, dashboard layout) as separate feature groups in `groups` when `min_group_size` is 1, or place standalone items in `ungrouped_feedback_ids` when `min_group_size` > 1.
 - Minimum confidence for grouping is {confidence_threshold}.
 - Minimum items to form a cluster is {min_group_size}.
 - Every entry in `related_feedback_ids` MUST be an exact ID from the candidate requests above.

@@ -13,6 +13,7 @@ from fastapi import HTTPException, status
 
 from app.models.auth import User
 from app.core.enums import PlatformRole, MembershipStatus
+from app.database.collections import Collections
 from app.ai.llm_service import LLMService, get_llm_service
 from app.ai.orchestrator.schemas import (
     OrchestratorHealthResponse,
@@ -51,6 +52,7 @@ class AIOrchestrator:
         membership_repo: Optional[WorkspaceMembershipRepository] = None,
         run_store: Optional[OrchestratorRunStore] = None,
         llm_service: Optional[LLMService] = None,
+        db: Optional[Any] = None,
     ):
         self.pipeline = pipeline or coordinator
         if not self.pipeline:
@@ -59,6 +61,46 @@ class AIOrchestrator:
         self.membership_repo = membership_repo
         self.run_store = run_store or get_orchestrator_run_store()
         self.llm_service = llm_service
+        self.db = db
+        self._indexes_ensured = False
+
+    async def _ensure_run_indexes(self) -> None:
+        if self.db is None or self._indexes_ensured:
+            return
+        try:
+            col = self.db[Collections.ORCHESTRATOR_RUNS]
+            await col.create_index("run_id", unique=True, name="idx_orchestrator_run_id_unique")
+            await col.create_index(
+                [("workspace_id", 1), ("started_at", -1)],
+                name="idx_orchestrator_ws_started",
+            )
+            self._indexes_ensured = True
+        except Exception as exc:
+            logger.warning("Failed to ensure orchestrator_runs indexes: %s", exc)
+
+    async def _persist_run_to_db(self, response: OrchestratorResponse) -> None:
+        """Persists an orchestrator execution record to MongoDB Atlas."""
+        if self.db is None:
+            return
+        await self._ensure_run_indexes()
+        payload = response.model_dump(mode="json")
+        payload["updated_at"] = datetime.now(timezone.utc)
+        await self.db[Collections.ORCHESTRATOR_RUNS].replace_one(
+            {"run_id": response.run_id},
+            payload,
+            upsert=True,
+        )
+
+    async def _load_run_from_db(self, run_id: str) -> Optional[OrchestratorResponse]:
+        """Loads an orchestrator execution record from MongoDB Atlas by run_id."""
+        if self.db is None:
+            return None
+        doc = await self.db[Collections.ORCHESTRATOR_RUNS].find_one({"run_id": run_id})
+        if not doc:
+            return None
+        doc.pop("_id", None)
+        doc.pop("updated_at", None)
+        return OrchestratorResponse.model_validate(doc)
 
     async def verify_workspace_access(self, user: User, workspace_id: Any) -> None:
         """
@@ -147,7 +189,8 @@ class AIOrchestrator:
             state=state,
         )
 
-        # 6. Cache Run Result
+        # 6. Persist Run Result in MongoDB Atlas + in-process cache
+        await self._persist_run_to_db(response)
         self.run_store.save_run(response)
 
         return response
@@ -158,9 +201,14 @@ class AIOrchestrator:
         user: User,
     ) -> OrchestratorResponse:
         """
-        Retrieves a cached orchestration run by ID after verifying workspace access.
+        Retrieves an orchestration run by ID (from memory cache or MongoDB Atlas)
+        after verifying workspace access.
         """
         run = self.run_store.get_run(run_id)
+        if not run and self.db is not None:
+            run = await self._load_run_from_db(run_id)
+            if run:
+                self.run_store.save_run(run)
         if not run:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,

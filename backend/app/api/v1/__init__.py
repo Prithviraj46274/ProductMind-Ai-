@@ -7,12 +7,16 @@ from fastapi import APIRouter
 from app.api.v1.endpoints import (
     health,
     auth,
+    workspaces,
+    feedback,
+    analytics,
     ai,
     feedback_ai,
     feature_ai,
     prioritization_ai,
     planning_ai,
     orchestrator_ai,
+    copilot,
 )
 
 api_router = APIRouter()
@@ -22,6 +26,15 @@ api_router.include_router(health.router)
 
 # Authentication & Session Management
 api_router.include_router(auth.router)
+
+# Workspace Management
+api_router.include_router(workspaces.router)
+
+# Workspace-scoped feedback ingestion and retrieval
+api_router.include_router(feedback.router)
+
+# Workspace-scoped analytics ingestion and measured query APIs
+api_router.include_router(analytics.router)
 
 # AI & LLM Foundation Diagnostics
 api_router.include_router(ai.router)
@@ -42,4 +55,5 @@ api_router.include_router(planning_ai.router)
 api_router.include_router(orchestrator_ai.router)
 api_router.include_router(orchestrator_ai.alias_router)
 
-
+# Conversational Product Copilot
+api_router.include_router(copilot.router)

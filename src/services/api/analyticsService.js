@@ -6,68 +6,183 @@
 import { apiClient } from './apiClient'
 import { API_ENDPOINTS } from './types'
 
-// Built-in Demo Analytics Dataset (Clearly marked as Demo Data)
-export const DEMO_ANALYTICS_DATASET = [
-  // 30 days of simulated product events across key features
-  ...generateDemoEventLogs()
-]
+function assertApiSuccess(res, fallbackMessage) {
+  if (res && res.success === false) {
+    const err = new Error(res.error || fallbackMessage || 'Analytics API request failed.')
+    err.status = res.status || 500
+    throw err
+  }
+}
 
-function generateDemoEventLogs() {
-  const events = []
-  const features = ['AI Smart Tagging', 'What-If Simulator', 'PRD Generator', 'Feedback Explorer', 'Roadmap Timeline', 'Release Governance']
-  const userPrefixes = ['usr-ent-01', 'usr-ent-02', 'usr-ent-03', 'usr-growth-04', 'usr-scale-05', 'usr-smb-06', 'usr-pm-07', 'usr-lead-08']
-  const eventTypes = ['view', 'click', 'export', 'complete', 'create']
-  
-  const now = new Date()
-  for (let d = 30; d >= 0; d--) {
-    const dateObj = new Date(now)
-    dateObj.setDate(now.getDate() - d)
-    const dateStr = dateObj.toISOString().split('T')[0]
+function buildAnalyticsParams({ workspaceId, timeRange = '30d', startDate = null, endDate = null } = {}) {
+  const params = {}
+  if (workspaceId) params.workspaceId = workspaceId
+  if (timeRange === 'custom' && startDate && endDate) {
+    params.startDate = startDate
+    params.endDate = endDate
+  } else if (startDate && endDate) {
+    params.startDate = startDate
+    params.endDate = endDate
+  } else if (timeRange && timeRange !== 'custom') {
+    params.timeRange = timeRange
+  }
+  return params
+}
 
-    const eventsCountForDay = 15 + Math.floor(Math.sin(d / 3) * 6) + (30 - d) // upward trend
-    for (let i = 0; i < eventsCountForDay; i++) {
-      const feature = features[Math.floor(Math.random() * features.length)]
-      const user = userPrefixes[Math.floor(Math.random() * userPrefixes.length)]
-      const eventType = eventTypes[Math.floor(Math.random() * eventTypes.length)]
-      const sessionId = `sess-${dateStr}-${user}`
-      events.push({
-        id: `evt-${dateStr}-${i}`,
-        timestamp: `${dateStr}T${String(9 + (i % 10)).padStart(2, '0')}:${String((i * 7) % 60).padStart(2, '0')}:00Z`,
-        date: dateStr,
-        userId: user,
-        sessionId,
-        featureName: feature,
-        eventType,
-        durationSeconds: 30 + Math.floor(Math.random() * 240),
-      })
+function parseCSVRow(line) {
+  const result = []
+  let current = ''
+  let inQuotes = false
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i]
+    if (ch === '"') {
+      if (inQuotes && line[i + 1] === '"') {
+        current += '"'
+        i++
+      } else {
+        inQuotes = !inQuotes
+      }
+    } else if (ch === ',' && !inQuotes) {
+      result.push(current.trim())
+      current = ''
+    } else {
+      current += ch
     }
   }
-  return events
+  result.push(current.trim())
+  return result
+}
+
+function stableRowHash(input) {
+  let hash = 2166136261
+  for (let i = 0; i < input.length; i++) {
+    hash ^= input.charCodeAt(i)
+    hash = Math.imul(hash, 16777619)
+  }
+  return (hash >>> 0).toString(16).padStart(8, '0')
+}
+
+function normalizeTimestampRFC3339(rawValue) {
+  if (rawValue === null || rawValue === undefined) return null
+  const text = String(rawValue).trim()
+  if (!text) return null
+  // Support YYYY-MM-DD shorthand by normalizing to midnight UTC, or full ISO/RFC3339
+  const candidate = /^\d{4}-\d{2}-\d{2}$/.test(text) ? `${text}T00:00:00Z` : text
+  const parsed = new Date(candidate)
+  if (Number.isNaN(parsed.getTime())) return null
+  return parsed.toISOString()
 }
 
 export const analyticsService = {
   /**
-   * Fetch overview metrics and KPIs
+   * Fetch overview metrics and KPIs from MongoDB Atlas-backed FastAPI endpoint
    */
   async getOverviewMetrics(options = {}) {
-    const { timeRange = '30d', dataset = null } = options
-
-    if (apiClient.isConfigured()) {
-      return apiClient.get(API_ENDPOINTS.ANALYTICS.OVERVIEW, {
-        params: { timeRange },
-      })
-    }
-
-    const data = dataset || DEMO_ANALYTICS_DATASET
-    const filtered = this.filterByTimeRange(data, timeRange)
-    const calculated = this.calculateKPIs(filtered)
+    const { workspaceId, timeRange = '30d', startDate = null, endDate = null } = options
+    const params = buildAnalyticsParams({ workspaceId, timeRange, startDate, endDate })
+    const res = await apiClient.get(API_ENDPOINTS.ANALYTICS.OVERVIEW, { params })
+    assertApiSuccess(res, 'Failed to load analytics overview.')
+    const raw = res?.data?.data ?? res?.data ?? res ?? {}
 
     return {
-      success: true,
-      data: calculated,
-      isDemo: !dataset,
-      status: 200,
+      success: res?.success !== false,
+      data: raw,
+      isDemo: false,
+      status: res?.status || 200,
       timestamp: new Date().toISOString(),
+    }
+  },
+
+  /**
+   * Fetch daily usage trends (optionally filtered to a single feature) from MongoDB Atlas-backed FastAPI endpoint
+   */
+  async getUsageTrendsFromApi(options = {}) {
+    const { workspaceId, timeRange = '30d', startDate = null, endDate = null, featureName = null } = options
+    const params = buildAnalyticsParams({ workspaceId, timeRange, startDate, endDate })
+    if (featureName) params.featureName = featureName
+    const res = await apiClient.get(API_ENDPOINTS.ANALYTICS.USAGE_TRENDS, { params })
+    assertApiSuccess(res, 'Failed to load usage trends.')
+    const raw = res?.data?.data ?? res?.data ?? res ?? {}
+
+    return {
+      success: res?.success !== false,
+      data: {
+        items: Array.isArray(raw.items) ? raw.items : [],
+        coverage: raw.coverage || null,
+        observedDays: raw.observedDays ?? 0,
+        lastEventAt: raw.lastEventAt ?? null,
+        calculatedAt: raw.calculatedAt ?? null,
+        dateRange: raw.dateRange ?? null,
+      },
+      status: res?.status || 200,
+    }
+  },
+
+  /**
+   * Fetch feature-level analytics and period comparisons from MongoDB Atlas-backed FastAPI endpoint
+   */
+  async getFeatureAnalyticsFromApi(options = {}) {
+    const {
+      workspaceId,
+      timeRange = '30d',
+      startDate = null,
+      endDate = null,
+      includeComparison = true,
+      page = 1,
+      limit = 50,
+    } = options
+    const params = buildAnalyticsParams({ workspaceId, timeRange, startDate, endDate })
+    params.page = page
+    params.limit = limit
+    if (includeComparison) params.includeComparison = true
+    const res = await apiClient.get(API_ENDPOINTS.ANALYTICS.FEATURE_ADOPTION, { params })
+    assertApiSuccess(res, 'Failed to load feature analytics.')
+    const raw = res?.data?.data ?? res?.data ?? res ?? {}
+
+    return {
+      success: res?.success !== false,
+      data: {
+        items: Array.isArray(raw.items) ? raw.items : [],
+        total: raw.total ?? 0,
+        page: raw.page ?? page,
+        limit: raw.limit ?? limit,
+        coverage: raw.coverage || null,
+        observedDays: raw.observedDays ?? 0,
+        lastEventAt: raw.lastEventAt ?? null,
+        dateRange: raw.dateRange ?? null,
+      },
+      status: res?.status || 200,
+    }
+  },
+
+  /**
+   * Fetch ordered user funnel metrics from MongoDB Atlas-backed FastAPI endpoint
+   */
+  async getFunnelAnalyticsFromApi(options = {}) {
+    const { workspaceId, timeRange = '30d', startDate = null, endDate = null, steps = null } = options
+    const params = buildAnalyticsParams({ workspaceId, timeRange, startDate, endDate })
+    if (Array.isArray(steps) && steps.length >= 2) {
+      params.steps = steps.join(',')
+    } else if (typeof steps === 'string' && steps.trim()) {
+      params.steps = steps.trim()
+    }
+    const res = await apiClient.get(API_ENDPOINTS.ANALYTICS.FUNNEL, { params })
+    assertApiSuccess(res, 'Failed to load funnel analytics.')
+    const raw = res?.data?.data ?? res?.data ?? res ?? {}
+
+    return {
+      success: res?.success !== false,
+      data: {
+        available: Boolean(raw.available),
+        reason: raw.reason ?? null,
+        steps: Array.isArray(raw.steps) ? raw.steps : [],
+        availableEvents: Array.isArray(raw.availableEvents) ? raw.availableEvents : [],
+        coverage: raw.coverage || null,
+        observedDays: raw.observedDays ?? 0,
+        lastEventAt: raw.lastEventAt ?? null,
+        dateRange: raw.dateRange ?? null,
+      },
+      status: res?.status || 200,
     }
   },
 
@@ -209,17 +324,11 @@ export const analyticsService = {
   },
 
   /**
-   * Compute User Drop-off / Funnel Analytics
+   * Compute User Drop-off / Funnel Analytics from parsed records
    */
   getFunnelAnalytics(events) {
     if (!Array.isArray(events) || events.length === 0) {
-      return [
-        { step: '1. Platform Visit', users: 100, conversionRate: 100, dropOffRate: 0 },
-        { step: '2. Feature Discovery', users: 78, conversionRate: 78, dropOffRate: 22 },
-        { step: '3. Core Interaction', users: 54, conversionRate: 54, dropOffRate: 31 },
-        { step: '4. Action Completed', users: 42, conversionRate: 42, dropOffRate: 22 },
-        { step: '5. Retained / Recurring', users: 31, conversionRate: 31, dropOffRate: 26 },
-      ]
+      return []
     }
 
     const totalUsers = new Set(events.map(e => e.userId).filter(Boolean)).size
@@ -264,118 +373,308 @@ export const analyticsService = {
   },
 
   /**
+   * Upload validated analytics events to MongoDB Atlas in bounded chunks (max 500/request)
+   */
+  async uploadDataset({
+    workspaceId,
+    items,
+    fileName = 'analytics-events.json',
+    sourceType = 'json',
+    detectedColumns = [],
+    mappedColumns = {},
+    onProgress = null,
+  }) {
+    if (!workspaceId) {
+      throw new Error('Workspace ID is required to import analytics data.')
+    }
+    if (!Array.isArray(items) || items.length === 0) {
+      throw new Error('No valid analytics events to import.')
+    }
+
+    const CHUNK_SIZE = 500
+    const totalChunks = Math.ceil(items.length / CHUNK_SIZE)
+    const aggregate = {
+      batchIds: [],
+      status: 'completed',
+      totalRows: 0,
+      acceptedRows: 0,
+      rejectedRows: 0,
+      duplicateRows: 0,
+      results: [],
+    }
+
+    for (let idx = 0; idx < totalChunks; idx++) {
+      const chunk = items.slice(idx * CHUNK_SIZE, (idx + 1) * CHUNK_SIZE)
+      const res = await apiClient.post(
+        API_ENDPOINTS.ANALYTICS.UPLOAD_DATASET,
+        {
+          items: chunk,
+          fileName: totalChunks > 1 ? `${fileName} (part ${idx + 1}/${totalChunks})` : fileName,
+          sourceType,
+          detectedColumns,
+          mappedColumns,
+        },
+        { params: { workspaceId } }
+      )
+      assertApiSuccess(res, 'Failed to upload analytics dataset.')
+
+      const data = res?.data || res
+      if (data?.id) aggregate.batchIds.push(data.id)
+      aggregate.totalRows += Number(data?.totalRows || chunk.length)
+      aggregate.acceptedRows += Number(data?.acceptedRows || 0)
+      aggregate.rejectedRows += Number(data?.rejectedRows || 0)
+      aggregate.duplicateRows += Number(data?.duplicateRows || 0)
+      if (Array.isArray(data?.results)) {
+        aggregate.results.push(...data.results)
+      }
+      if (data?.status === 'partial') {
+        aggregate.status = 'partial'
+      }
+      if (typeof onProgress === 'function') {
+        onProgress(idx + 1, totalChunks)
+      }
+    }
+
+    return aggregate
+  },
+
+  /**
+   * List recent analytics import batches for a workspace
+   */
+  async listBatches({ workspaceId, limit = 20 } = {}) {
+    if (!workspaceId) return []
+    const res = await apiClient.get(API_ENDPOINTS.ANALYTICS.LIST_DATASETS, {
+      params: { workspaceId, limit },
+    })
+    return Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : [])
+  },
+
+  /**
    * Parse uploaded CSV/JSON analytics dataset with column validation
    */
-  parseAnalyticsFile(content, fileName = '') {
+  parseAnalyticsFile(content, fileName = '', columnOverrides = {}) {
     const isJson = fileName.toLowerCase().endsWith('.json') || content.trim().startsWith('[') || content.trim().startsWith('{')
 
     if (isJson) {
       try {
         const parsed = JSON.parse(content)
         const arrayData = Array.isArray(parsed) ? parsed : (parsed.events || parsed.data || [parsed])
-        return this.validateAndNormalizeDataset(arrayData)
+        return this.validateAndNormalizeDataset(arrayData, [], { sourceType: 'json', fileName, columnOverrides })
       } catch (err) {
         return {
           success: false,
+          sourceType: 'json',
           error: `Invalid JSON format: ${err.message}`,
           records: [],
+          rawRecords: [],
+          ingestionItems: [],
+          validationErrors: [],
           detectedColumns: [],
           missingRequired: ['JSON syntax error'],
         }
       }
     }
 
-    // CSV parsing
-    return this.parseAnalyticsCSV(content)
+    return this.parseAnalyticsCSV(content, fileName, columnOverrides)
   },
 
-  parseAnalyticsCSV(csvText) {
+  parseAnalyticsCSV(csvText, fileName = '', columnOverrides = {}) {
     const lines = csvText.split(/\r?\n/).filter(l => l.trim().length > 0)
     if (lines.length < 2) {
       return {
         success: false,
+        sourceType: 'csv',
         error: 'CSV must contain at least a header row and one data row.',
         records: [],
+        rawRecords: [],
+        ingestionItems: [],
+        validationErrors: [],
         detectedColumns: [],
         missingRequired: ['Header and data rows'],
       }
     }
 
-    const header = lines[0].split(',').map(h => h.trim().replace(/^["']|["']$/g, ''))
-    const records = []
+    const header = parseCSVRow(lines[0]).map(h => h.replace(/^["']|["']$/g, ''))
+    const rawRecords = []
 
     for (let i = 1; i < lines.length; i++) {
-      const row = lines[i].split(',').map(v => v.trim().replace(/^["']|["']$/g, ''))
+      const row = parseCSVRow(lines[i])
       const obj = {}
       header.forEach((colName, cIdx) => {
-        obj[colName] = row[cIdx] || ''
+        obj[colName] = row[cIdx] !== undefined ? row[cIdx] : ''
       })
-      records.push(obj)
+      rawRecords.push(obj)
     }
 
-    return this.validateAndNormalizeDataset(records, header)
+    return this.validateAndNormalizeDataset(rawRecords, header, { sourceType: 'csv', fileName, columnOverrides })
   },
 
   /**
-   * Validate required fields and map columns
+   * Validate required fields, map columns (with optional user overrides), and build backend ingestion items
    */
-  validateAndNormalizeDataset(rawRecords, providedHeaders = []) {
+  validateAndNormalizeDataset(rawRecords, providedHeaders = [], options = {}) {
+    const { sourceType = 'json', fileName = '', columnOverrides = {} } = options
     if (!Array.isArray(rawRecords) || rawRecords.length === 0) {
       return {
         success: false,
+        sourceType,
         error: 'Dataset is empty.',
         records: [],
+        rawRecords: [],
+        ingestionItems: [],
+        validationErrors: [],
         detectedColumns: [],
         missingRequired: ['Non-empty rows'],
       }
     }
 
-    const sample = rawRecords[0]
-    const detectedColumns = Object.keys(sample)
+    const detectedColumns = providedHeaders.length > 0
+      ? providedHeaders
+      : Array.from(new Set(rawRecords.slice(0, 20).flatMap(r => (r && typeof r === 'object' ? Object.keys(r) : []))))
 
-    // Map column aliases
     const findCol = (aliases) => {
       return detectedColumns.find(col => aliases.some(a => col.toLowerCase().replace(/[^a-z0-9]/g, '').includes(a)))
     }
 
-    const userCol = findCol(['user_id', 'userid', 'user', 'uid', 'customer', 'actor', 'account'])
-    const timeCol = findCol(['timestamp', 'time', 'date', 'created'])
-    const featureCol = findCol(['feature_name', 'featurename', 'feature', 'module', 'screen', 'page'])
-    const eventCol = findCol(['event_name', 'eventname', 'event', 'action', 'type', 'verb'])
-    const sessionCol = findCol(['session_id', 'sessionid', 'session', 'sessid', 'sid'])
+    const resolveCol = (key, aliases) => {
+      if (Object.prototype.hasOwnProperty.call(columnOverrides, key)) {
+        return columnOverrides[key] || null
+      }
+      return findCol(aliases) || null
+    }
+
+    const eventIdCol = resolveCol('eventId', ['eventid', 'id'])
+    const userCol = resolveCol('userId', ['userid', 'actorid', 'user', 'uid', 'customer', 'actor', 'account'])
+    const timeCol = resolveCol('timestamp', ['eventtimestamp', 'timestamp', 'time', 'date', 'createdat', 'created'])
+    const featureCol = resolveCol('featureName', ['featurename', 'feature', 'module', 'screen', 'page'])
+    const eventNameCol = resolveCol('eventName', ['eventname', 'event', 'action', 'verb'])
+    const eventTypeCol = resolveCol('eventType', ['eventtype', 'type', 'category'])
+    const sessionCol = resolveCol('sessionId', ['sessionid', 'session', 'sessid', 'sid'])
+    const durationCol = resolveCol('durationSeconds', ['durationseconds', 'duration'])
 
     const missingRequired = []
     if (!userCol && !featureCol) {
       missingRequired.push('userId or featureName')
     }
+    if (!timeCol) {
+      missingRequired.push('eventTimestamp')
+    }
+    if (!eventNameCol && !eventTypeCol) {
+      missingRequired.push('eventName or eventType')
+    }
 
-    const normalizedRecords = rawRecords.map((r, idx) => {
-      const rawDate = (timeCol && r[timeCol]) || new Date().toISOString()
-      const datePart = rawDate.includes('T') ? rawDate.split('T')[0] : rawDate.slice(0, 10)
-      return {
-        id: `imp-evt-${idx + 1}`,
-        userId: (userCol && r[userCol]) || `anon-user-${(idx % 10) + 1}`,
-        timestamp: rawDate,
-        date: datePart,
-        featureName: (featureCol && r[featureCol]) || 'Core Feature',
-        eventType: (eventCol && r[eventCol]) || 'view',
-        sessionId: (sessionCol && r[sessionCol]) || `sess-${datePart}-${r[userCol] || idx}`,
-        durationSeconds: Number(r.duration || r.durationSeconds || r.duration_seconds || 120),
-        raw: r,
+    const records = []
+    const ingestionItems = []
+    const validationErrors = []
+    const seenEventIds = new Set()
+    let duplicateInFileCount = 0
+
+    rawRecords.forEach((r, idx) => {
+      const rowNumber = idx + 1
+      const rowErrors = []
+
+      if (!r || typeof r !== 'object' || Array.isArray(r)) {
+        validationErrors.push({ rowNumber, eventId: null, message: 'Row must be an object' })
+        return
       }
+
+      const rawTs = timeCol ? r[timeCol] : null
+      const normalizedTs = normalizeTimestampRFC3339(rawTs)
+      if (!normalizedTs) {
+        rowErrors.push('Missing or invalid timestamp (expected ISO/RFC3339 or YYYY-MM-DD)')
+      }
+
+      const rawEventName = eventNameCol ? String(r[eventNameCol] ?? '').trim() : ''
+      const rawEventType = eventTypeCol ? String(r[eventTypeCol] ?? '').trim() : ''
+      const resolvedEventName = rawEventName || rawEventType
+      const resolvedEventType = rawEventType || rawEventName
+      if (!resolvedEventName) {
+        rowErrors.push('Missing eventName / eventType')
+      }
+
+      const rawDuration = durationCol ? r[durationCol] : undefined
+      let durationSeconds = null
+      if (rawDuration !== undefined && rawDuration !== null && String(rawDuration).trim() !== '') {
+        const parsedDuration = Number(rawDuration)
+        if (!Number.isFinite(parsedDuration) || parsedDuration < 0) {
+          rowErrors.push('Invalid durationSeconds (must be a non-negative number)')
+        } else {
+          durationSeconds = parsedDuration
+        }
+      }
+
+      const actorId = userCol ? String(r[userCol] ?? '').trim() || null : null
+      const featureName = featureCol ? String(r[featureCol] ?? '').trim() || null : null
+      const sessionId = sessionCol ? String(r[sessionCol] ?? '').trim() || null : null
+      const explicitEventId = eventIdCol ? String(r[eventIdCol] ?? '').trim() : ''
+      const deterministicId = explicitEventId || `imp-${stableRowHash(`${fileName}|${rowNumber}|${normalizedTs || ''}|${actorId || ''}|${resolvedEventName}|${featureName || ''}`)}`
+
+      if (seenEventIds.has(deterministicId)) {
+        duplicateInFileCount += 1
+      } else {
+        seenEventIds.add(deterministicId)
+      }
+
+      if (rowErrors.length > 0) {
+        validationErrors.push({
+          rowNumber,
+          eventId: explicitEventId || null,
+          message: rowErrors.join('; '),
+        })
+        return
+      }
+
+      const datePart = normalizedTs.split('T')[0]
+      records.push({
+        id: deterministicId,
+        userId: actorId,
+        timestamp: normalizedTs,
+        date: datePart,
+        featureName,
+        eventName: resolvedEventName,
+        eventType: resolvedEventType,
+        sessionId,
+        durationSeconds,
+        raw: r,
+      })
+
+      const item = {
+        eventId: deterministicId,
+        eventName: resolvedEventName.slice(0, 100),
+        eventType: resolvedEventType.slice(0, 50),
+        eventTimestamp: normalizedTs,
+      }
+      if (actorId) item.actorId = actorId.slice(0, 100)
+      if (featureName) item.featureName = featureName.slice(0, 120)
+      if (sessionId) item.sessionId = sessionId.slice(0, 120)
+      if (durationSeconds !== null) item.durationSeconds = durationSeconds
+      ingestionItems.push(item)
     })
 
+    const hasValidRows = ingestionItems.length > 0 && missingRequired.length === 0
+
     return {
-      success: missingRequired.length === 0,
-      records: normalizedRecords,
-      totalCount: normalizedRecords.length,
+      success: hasValidRows,
+      sourceType,
+      fileName,
+      rawRecords,
+      records,
+      ingestionItems,
+      validationErrors,
+      duplicateInFileCount,
+      totalCount: rawRecords.length,
+      validCount: ingestionItems.length,
+      invalidCount: validationErrors.length,
       detectedColumns,
       mappedColumns: {
-        userId: userCol || 'Auto-generated fallback',
-        timestamp: timeCol || 'Auto-generated fallback',
-        featureName: featureCol || 'Auto-generated fallback',
-        eventType: eventCol || 'Auto-generated fallback',
-        sessionId: sessionCol || 'Auto-generated fallback',
+        eventId: eventIdCol || '',
+        userId: userCol || '',
+        timestamp: timeCol || '',
+        featureName: featureCol || '',
+        eventName: eventNameCol || '',
+        eventType: eventTypeCol || '',
+        sessionId: sessionCol || '',
+        durationSeconds: durationCol || '',
       },
       missingRequired,
     }

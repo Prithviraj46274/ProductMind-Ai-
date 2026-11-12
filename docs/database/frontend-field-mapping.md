@@ -57,13 +57,16 @@ This document provides a comprehensive mapping between every frontend page, UI c
   - Sentiment badges (color-coded)
   - Duplicate detection matches (Jaccard similarity score)
   - Smart tag suggestions
-- **Future API Operations**:
-  - `GET /api/v1/feedback?page=1&limit=8&category=...&sentiment=...`
-  - `POST /api/v1/feedback`
-  - `PUT /api/v1/feedback/:id`
-  - `DELETE /api/v1/feedback/:id`
-  - `POST /api/v1/feedback/batch` (CSV/JSON upload)
-- **Current State**: Seed data in `src/data/seedData.js`, mutations synced to `localStorage`, API contracts defined in `src/services/api/feedbackService.js`.
+- **Implemented Backend API (Phase 4 Step 10)**:
+  - `GET /api/v1/feedback?workspaceId=...&page=1&limit=...&category=...&sentiment=...&priority=...&linkedFeature=...&search=...`
+  - `POST /api/v1/feedback?workspaceId=...` (requires `externalId` or `Idempotency-Key`)
+  - `GET /api/v1/feedback/:id` (checks membership in the record's workspace)
+  - `POST /api/v1/feedback/batch?workspaceId=...` with JSON `{ "items": [...] }`; maximum 500 rows
+  - `GET /api/v1/feedback/batch/:batchId?workspaceId=...`
+  - `POST /api/v1/feedback/batch/:batchId/retry?workspaceId=...` with previously rejected `{ "rowNumber", "item" }` rows
+  - Input `linkedFeatureId` maps to the existing `promotedFeatureId` field and is validated against the same workspace.
+  - Batch retries resubmit only failed rows with their original stable `id` or `externalId`; no text-similarity deduplication is applied.
+- **Not Implemented in this step**: Feedback edit/delete routes and multipart CSV upload. The frontend remains local/demo-backed; this step does not modify frontend files or wire its API client.
 
 ---
 
@@ -206,13 +209,16 @@ This document provides a comprehensive mapping between every frontend page, UI c
   - DAU, WAU, MAU calculations
   - Funnel drop-off rates across 5 stages
   - Feature adoption percentages
-- **Future API Operations**:
+- **Implemented Backend API Operations (Phase 4 Step 11)**:
+  - `POST /api/v1/analytics/events?workspaceId=...` for one timezone-aware RFC3339 event
+  - `POST /api/v1/analytics/datasets/upload?workspaceId=...` for JSON batches of 1–500 rows
+  - `GET /api/v1/analytics/datasets/:batchId?workspaceId=...` and `POST /api/v1/analytics/datasets/:batchId/retry?workspaceId=...`
   - `GET /api/v1/analytics/overview?timeRange=30d`
   - `GET /api/v1/analytics/usage-trends`
   - `GET /api/v1/analytics/features`
   - `GET /api/v1/analytics/funnel`
-  - `POST /api/v1/analytics/datasets/upload`
-- **Current State**: Managed in `src/services/api/analyticsService.js`.
+- **Metric Contract**: Event counts and daily rollups use accepted events only. Active users and sessions require non-empty actor/session IDs; session duration, accounts, and funnel metrics are not reported without source semantics. Responses include coverage and freshness metadata. The 90-day raw-event TTL can make longer-range distinct identity metrics unavailable; see `docs/database/analytics-contract.md`.
+- **Current Frontend State**: `src/services/api/analyticsService.js` still uses local/demo analytics behavior. This phase does not wire the frontend API client or alter its demo-data fallbacks.
 
 ---
 

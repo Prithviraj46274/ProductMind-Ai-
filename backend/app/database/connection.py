@@ -49,6 +49,38 @@ class MongoDBManager:
         return fallback_name
 
     @classmethod
+    def validate_mongo_uri(cls, uri: Optional[str]) -> str:
+        """
+        Validates that MONGODB_URI is configured for MongoDB Atlas and never
+        falls back to local MongoDB instances or unreplaced placeholders.
+        """
+        connection_uri = (settings.MONGODB_URI if uri is None else uri).strip()
+        if not connection_uri:
+            raise ValueError(
+                "MONGODB_URI is not configured. Set a valid MongoDB Atlas connection string in backend/.env."
+            )
+
+        if not (connection_uri.startswith("mongodb+srv://") or connection_uri.startswith("mongodb://")):
+            raise ValueError(
+                "Invalid MONGODB_URI scheme. Expected a MongoDB Atlas 'mongodb+srv://' or 'mongodb://' URI."
+            )
+
+        placeholder_tokens = ("<db_username>", "<db_password>", "<username>", "<password>", "<cluster>")
+        if any(token in connection_uri for token in placeholder_tokens):
+            raise ValueError(
+                "MONGODB_URI contains unreplaced placeholder credentials. Replace placeholders with valid Atlas credentials."
+            )
+
+        lowered = connection_uri.lower()
+        local_markers = ("localhost", "127.0.0.1", "[::1]", "0.0.0.0")
+        if any(marker in lowered for marker in local_markers):
+            raise ValueError(
+                "Local MongoDB URIs are disabled. ProductMind AI requires MongoDB Atlas exclusively."
+            )
+
+        return connection_uri
+
+    @classmethod
     async def connect_async(cls, uri: Optional[str] = None) -> AsyncIOMotorDatabase:
         """
         Initializes or returns existing asynchronous Motor database client.
@@ -56,7 +88,7 @@ class MongoDBManager:
         if cls._async_client is not None and cls._async_db is not None:
             return cls._async_db
 
-        connection_uri = uri or settings.MONGODB_URI
+        connection_uri = cls.validate_mongo_uri(uri)
         db_name = cls.get_database_name(connection_uri, settings.DATABASE_NAME)
         safe_uri = sanitize_mongo_uri(connection_uri)
 
@@ -71,12 +103,12 @@ class MongoDBManager:
             # Verify connectivity
             await cls._async_client.admin.command("ping")
             cls._async_db = cls._async_client[db_name]
-            logger.info("Connected to MongoDB (Async Motor) at %s [%s]", safe_uri, db_name)
+            logger.info("Connected to MongoDB Atlas (Async Motor) at %s [%s]", safe_uri, db_name)
             return cls._async_db
         except Exception as exc:
             cls._async_client = None
             cls._async_db = None
-            logger.error("Failed to connect to MongoDB (Async): %s", exc)
+            logger.error("Failed to connect to MongoDB Atlas (Async) at %s: %s", safe_uri, exc)
             raise
 
     @classmethod
@@ -87,7 +119,7 @@ class MongoDBManager:
         if cls._sync_client is not None and cls._sync_db is not None:
             return cls._sync_db
 
-        connection_uri = uri or settings.MONGODB_URI
+        connection_uri = cls.validate_mongo_uri(uri)
         db_name = cls.get_database_name(connection_uri, settings.DATABASE_NAME)
         safe_uri = sanitize_mongo_uri(connection_uri)
 
@@ -102,12 +134,12 @@ class MongoDBManager:
             # Verify connectivity
             cls._sync_client.admin.command("ping")
             cls._sync_db = cls._sync_client[db_name]
-            logger.info("Connected to MongoDB (Sync PyMongo) at %s [%s]", safe_uri, db_name)
+            logger.info("Connected to MongoDB Atlas (Sync PyMongo) at %s [%s]", safe_uri, db_name)
             return cls._sync_db
         except Exception as exc:
             cls._sync_client = None
             cls._sync_db = None
-            logger.error("Failed to connect to MongoDB (Sync): %s", exc)
+            logger.error("Failed to connect to MongoDB Atlas (Sync) at %s: %s", safe_uri, exc)
             raise
 
     @classmethod

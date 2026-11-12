@@ -354,3 +354,35 @@ def get_ai_service():
     from app.ai.llm_service import get_llm_service
     return get_llm_service()
 
+
+def get_copilot_conversation_service(
+    db: AsyncIOMotorDatabase = Depends(get_mongo_db),
+):
+    """Provides wired CopilotConversationService backed by MongoDB Atlas and Groq."""
+    from app.services.copilot_ai_service import CopilotAIService
+    from app.services.copilot_context_service import CopilotContextService
+    from app.services.copilot_conversation_service import CopilotConversationService
+
+    context_service = CopilotContextService(
+        workspace_repo=WorkspaceRepository(db),
+        membership_repo=WorkspaceMembershipRepository(db),
+        feedback_repo=FeedbackRepository(db),
+        feature_group_repo=FeatureGroupRepository(db),
+        prioritization_repo=PrioritizationScenarioRepository(db),
+        analytics_event_repo=AnalyticsEventRepository(db),
+        analytics_rollup_repo=AnalyticsDailyRollupRepository(db),
+        prd_repo=PRDRepository(db),
+        roadmap_repo=RoadmapRepository(db),
+    )
+    ai_service = CopilotAIService(
+        context_service=context_service,
+        llm_service=get_ai_service(),
+    )
+    return CopilotConversationService(
+        workspace_repo=WorkspaceRepository(db),
+        membership_repo=WorkspaceMembershipRepository(db),
+        conversation_repo=CopilotConversationRepository(db),
+        message_repo=CopilotMessageRepository(db),
+        copilot_ai_service=ai_service,
+    )
+

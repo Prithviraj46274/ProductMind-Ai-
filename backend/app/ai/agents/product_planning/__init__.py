@@ -24,7 +24,10 @@ from app.ai.agents.product_planning.schemas import (
     RoadmapPhase,
     ProductPlanningAgentOutput,
     PRDAgentOutput,
+    CorePRDNarrativeOutput,
+    CorePRDRequirementsOutput,
     UserStoriesAgentOutput,
+    TechnicalSpecsAgentOutput,
     GenerateProductPlanRequest,
     GeneratePRDRequest,
     GenerateUserStoriesRequest,
@@ -34,7 +37,10 @@ from app.ai.agents.product_planning.schemas import (
 from app.ai.agents.product_planning.prompts import (
     product_planning_prompt,
     prd_generation_prompt,
+    prd_narrative_prompt,
+    prd_requirements_prompt,
     user_stories_prompt,
+    technical_specs_prompt,
 )
 from app.ai.agents.product_planning.agent import (
     ProductPlanningAgent,
@@ -66,7 +72,10 @@ __all__ = [
     "RoadmapPhase",
     "ProductPlanningAgentOutput",
     "PRDAgentOutput",
+    "CorePRDNarrativeOutput",
+    "CorePRDRequirementsOutput",
     "UserStoriesAgentOutput",
+    "TechnicalSpecsAgentOutput",
     "GenerateProductPlanRequest",
     "GeneratePRDRequest",
     "GenerateUserStoriesRequest",
@@ -75,7 +84,10 @@ __all__ = [
     # Prompts
     "product_planning_prompt",
     "prd_generation_prompt",
+    "prd_narrative_prompt",
+    "prd_requirements_prompt",
     "user_stories_prompt",
+    "technical_specs_prompt",
     # Agent & Helper
     "ProductPlanningAgent",
     "format_product_planning_prompt_inputs",
