@@ -244,6 +244,82 @@ class FeedbackRepository(BaseRepository[FeedbackItem]):
         )
         return result.modified_count
 
+    async def summarize_workspace_feedback(self, workspace_id: Any) -> Dict[str, Any]:
+        """Aggregates workspace feedback counts, sentiment, priority, categories, and top themes in Atlas."""
+        ws_oid = self._ensure_object_id(workspace_id)
+        pipeline = [
+            {"$match": {"workspaceId": ws_oid}},
+            {
+                "$facet": {
+                    "total": [{"$count": "count"}],
+                    "sentiments": [
+                        {"$group": {"_id": {"$ifNull": ["$sentiment", "Unspecified"]}, "count": {"$sum": 1}}}
+                    ],
+                    "priorities": [
+                        {
+                            "$group": {
+                                "_id": {
+                                    "$ifNull": [
+                                        "$sourcePriority",
+                                        {"$ifNull": ["$aiPredictedPriority", "Unspecified"]},
+                                    ]
+                                },
+                                "count": {"$sum": 1},
+                            }
+                        }
+                    ],
+                    "categories": [
+                        {"$match": {"category": {"$type": "string", "$ne": ""}}},
+                        {"$group": {"_id": "$category", "count": {"$sum": 1}}},
+                        {"$sort": {"count": -1, "_id": 1}},
+                        {"$limit": 6},
+                    ],
+                    "themes": [
+                        {
+                            "$project": {
+                                "allTags": {
+                                    "$concatArrays": [
+                                        {"$ifNull": ["$aiThemes", []]},
+                                        {"$ifNull": ["$tags", []]},
+                                    ]
+                                }
+                            }
+                        },
+                        {"$unwind": "$allTags"},
+                        {"$match": {"allTags": {"$type": "string", "$ne": ""}}},
+                        {"$group": {"_id": "$allTags", "count": {"$sum": 1}}},
+                        {"$sort": {"count": -1, "_id": 1}},
+                        {"$limit": 8},
+                    ],
+                }
+            },
+        ]
+        docs = await self.collection.aggregate(pipeline).to_list(length=1)
+        if not docs:
+            return {
+                "totalCount": 0,
+                "sentimentDistribution": {},
+                "priorityDistribution": {},
+                "topCategories": [],
+                "topThemes": [],
+            }
+        facet = docs[0]
+        return {
+            "totalCount": int(facet["total"][0]["count"]) if facet.get("total") else 0,
+            "sentimentDistribution": {
+                d["_id"]: int(d["count"]) for d in facet.get("sentiments", []) if d.get("_id")
+            },
+            "priorityDistribution": {
+                d["_id"]: int(d["count"]) for d in facet.get("priorities", []) if d.get("_id")
+            },
+            "topCategories": [
+                {"category": d["_id"], "count": int(d["count"])}
+                for d in facet.get("categories", [])
+                if d.get("_id")
+            ],
+            "topThemes": [d["_id"] for d in facet.get("themes", []) if d.get("_id")],
+        }
+
 
 class FeedbackBatchRepository(BaseRepository[FeedbackBatch]):
     def __init__(self, db: AsyncIOMotorDatabase):

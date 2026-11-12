@@ -7,8 +7,6 @@ import {
 } from '../services/storageService'
 import { calculatePriorityScore } from '../data/scoringFormulas'
 import { createHistoryRecord, appendHistory } from '../services/historyService'
-import { queryCopilot } from '../services/aiSimulationService'
-import { copilotService } from '../services/api/copilotService'
 import { feedbackService } from '../services/api/feedbackService'
 import { isBackendConfigured } from '../services/api/apiClient'
 
@@ -32,7 +30,6 @@ export function AppProvider({ children }) {
   const [history, setHistory] = useState(initial.history)
   const [introSeen, setIntroSeenState] = useState(initial.introSeen)
   const [tourSeen, setTourSeenState] = useState(initial.tourSeen)
-  const [copilotChats, setCopilotChats] = useState(initial.copilotChats)
   const [savedViews, setSavedViews] = useState(initial.savedViews)
   const [dashboardLayout, setDashboardLayout] = useState(initial.dashboardLayout)
 
@@ -57,7 +54,6 @@ export function AppProvider({ children }) {
   useEffect(() => { safeSet(STORAGE_KEYS.HISTORY, history) }, [history])
   useEffect(() => { safeSet(STORAGE_KEYS.INTRO_SEEN, introSeen) }, [introSeen])
   useEffect(() => { safeSet(STORAGE_KEYS.TOUR_SEEN, tourSeen) }, [tourSeen])
-  useEffect(() => { safeSet(STORAGE_KEYS.COPILOT_CHATS, copilotChats) }, [copilotChats])
   useEffect(() => { safeSet(STORAGE_KEYS.SAVED_VIEWS, savedViews) }, [savedViews])
   useEffect(() => { safeSet(STORAGE_KEYS.DASHBOARD_LAYOUT, dashboardLayout) }, [dashboardLayout])
 
@@ -513,72 +509,6 @@ export function AppProvider({ children }) {
     addToast('Scenario deleted', 'warning')
   }
 
-  // --- AI COPILOT CHATS ---
-  const sendMessageToCopilot = async (chatId, userMessage) => {
-    const userMsgObj = {
-      id: `m-${Date.now()}`,
-      role: 'user',
-      content: userMessage,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-    }
-
-    // Add user message immediately
-    setCopilotChats(prev => prev.map(chat => {
-      if (chat.id !== chatId) return chat
-      return { ...chat, messages: [...chat.messages, userMsgObj] }
-    }))
-
-    // Simulated thought & context retrieval delay
-    await new Promise(resolve => setTimeout(resolve, 600))
-
-    const context = { feedback, features, prds, roadmap, releases, experiments }
-    const result = await copilotService.sendMessage(userMessage, context)
-
-    const botMsgObj = {
-      id: result.data?.id || `m-bot-${Date.now()}`,
-      role: 'assistant',
-      content: result.data?.text || result.error || 'Unable to generate response.',
-      timestamp: result.data?.timestamp || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      isDemo: Boolean(result.isDemo),
-      evidence: result.data?.evidence || [],
-      error: !result.success ? result.error : null,
-    }
-
-    setCopilotChats(prev => prev.map(chat => {
-      if (chat.id !== chatId) return chat
-      return { ...chat, messages: [...chat.messages, botMsgObj] }
-    }))
-  }
-
-  const newCopilotChat = (title = 'New Strategy Session') => {
-    const newChat = {
-      id: `chat-${Date.now()}`,
-      title,
-      createdAt: new Date().toISOString(),
-      messages: [
-        {
-          id: `m-init-${Date.now()}`,
-          role: 'assistant',
-          content: 'Hello! I am your **Product Mind AI Copilot**. How can I assist with feature prioritization, customer feedback analysis, or PRD generation today?',
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-        }
-      ]
-    }
-    setCopilotChats(prev => [newChat, ...prev])
-    return newChat.id
-  }
-
-  const deleteCopilotChat = (chatId) => {
-    setCopilotChats(prev => prev.filter(c => c.id !== chatId))
-  }
-
-  const clearCopilotChat = (chatId) => {
-    setCopilotChats(prev => prev.map(c => {
-      if (c.id !== chatId) return c
-      return { ...c, messages: [] }
-    }))
-  }
-
   // --- NOTIFICATIONS ---
   const addNotification = (notif) => {
     const item = {
@@ -706,7 +636,6 @@ export function AppProvider({ children }) {
         setIntroSeen: setIntroSeenState,
         tourSeen,
         setTourSeen: setTourSeenState,
-        copilotChats,
         savedViews,
         setSavedViews,
         dashboardLayout,
@@ -761,11 +690,6 @@ export function AppProvider({ children }) {
         createScenario,
         updateScenario,
         deleteScenario,
-
-        sendMessageToCopilot,
-        newCopilotChat,
-        deleteCopilotChat,
-        clearCopilotChat,
 
         addNotification,
         markNotificationAsRead,

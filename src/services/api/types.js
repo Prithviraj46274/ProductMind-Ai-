@@ -94,5 +94,16 @@ export const API_ENDPOINTS = {
     FEATURE_ADOPTION: '/api/v1/analytics/features',
     FUNNEL: '/api/v1/analytics/funnel',
     UPLOAD_DATASET: '/api/v1/analytics/datasets/upload',
+    UPLOAD_BATCH: '/api/v1/analytics/events/batch',
+    LIST_DATASETS: '/api/v1/analytics/datasets',
+    DATASET_DETAIL: (batchId) => `/api/v1/analytics/datasets/${batchId}`,
+  },
+
+  // Conversational Product Copilot
+  COPILOT: {
+    CHAT: '/api/v1/copilot/chat',
+    CONVERSATIONS: '/api/v1/copilot/conversations',
+    CONVERSATION: (conversationId) => `/api/v1/copilot/conversations/${conversationId}`,
+    ARCHIVE: (conversationId) => `/api/v1/copilot/conversations/${conversationId}`,
   },
 }

@@ -16,6 +16,7 @@ from app.api.v1.endpoints import (
     prioritization_ai,
     planning_ai,
     orchestrator_ai,
+    copilot,
 )
 
 api_router = APIRouter()
@@ -53,3 +54,6 @@ api_router.include_router(planning_ai.router)
 # Central AI Orchestrator (available at /api/v1/ai/orchestrator and /api/v1/orchestrator)
 api_router.include_router(orchestrator_ai.router)
 api_router.include_router(orchestrator_ai.alias_router)
+
+# Conversational Product Copilot
+api_router.include_router(copilot.router)
